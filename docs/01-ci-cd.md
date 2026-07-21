@@ -131,16 +131,26 @@ d'environnement lisible par les stages suivants ; c'est le pont entre
 commande shell comme une chaîne Groovy manipulable (`.split`, `.contains`,
 `.findAll`) plutôt que de juste l'exécuter.
 
-`collectEntries { svc -> [(svc): { ... }] }` — transforme la liste des
-services modifiés en une map nom → bloc d'instructions ; `parallel
-parallelStages` exécute chaque bloc en même temps, un thread par service
-(visible dans la Console Output comme `Branch: api-gateway`, `Branch:
-auth-service`... en parallèle).
+`stage('Build & Test') { parallel { stage('api-gateway') { when {...} steps {...} } ... } }`
+— les 5 services sont déclarés **statiquement** (noms fixes dans le fichier),
+chacun avec son propre `when` qui vérifie individuellement s'il fait partie
+de `CHANGED_SERVICES` (`env.CHANGED_SERVICES.tokenize(',').contains('nom')`)
+pour décider s'il doit tourner. Une version précédente générait ces stages
+dynamiquement (`collectEntries` + `parallel` construit au runtime) — plus
+courte à écrire, mais le plugin `pipeline-stage-view` (la vue "Pipeline
+Overview" en blocs colorés) ne sait pas afficher des branches parallèles dont
+les noms ne sont connus qu'à l'exécution. Le prix de la version statique :
+ajouter un 6ᵉ service (ex. `discovery-service`) demande d'ajouter son bloc à
+la main plutôt que ce soit automatique — accepté pour retrouver la
+visualisation.
 
 `docker.image('maven:...').inside('-v maven_repo:/root/.m2') { sh "..." }` —
 plugin Docker Pipeline : démarre un conteneur jetable depuis cette image, y
 monte automatiquement le workspace, exécute les commandes dedans, puis le
 détruit. Nécessite le CLI `docker` dans le conteneur Jenkins (voir plus haut).
+Les fonctions `buildService(svc)` / `sonarService(svc)` définies en haut du
+Jenkinsfile (hors du bloc `pipeline { }`) évitent de dupliquer cet appel 5
+fois pour le build et 5 fois pour l'analyse Sonar.
 
 `withSonarQubeEnv('sonarqube') { ... }` — injecte l'URL et le token du
 serveur SonarQube configuré dans Jenkins (JCasC), sans les coder en dur dans
@@ -192,6 +202,26 @@ des services touchés via `git diff --name-only` entre la base de la PR et
 concernés. Sans PR (build direct sur une branche), il compare avec le commit
 précédent (`HEAD~1`) — cas particulier à surveiller sur le tout premier commit
 du repo, qui n'a pas de `HEAD~1`.
+
+**Ce `HEAD~1` n'affaiblit pas la protection de `main`.** Tant qu'une PR est
+ouverte sur une branche ("Exclude branches that are also filed as PRs" dans
+les *Behaviours*), chaque nouveau commit poussé dessus est rebuild en
+contexte PR, pas en simple branche — la comparaison se fait alors contre
+`origin/main`, cumulée sur toute la PR. Un service cassé par un commit reste
+donc dans `CHANGED_SERVICES` et continue d'être retesté à chaque push
+suivant, même si un commit plus tard ne touche que la doc, jusqu'à ce qu'il
+soit réellement corrigé ou que la PR soit mergée. Le chemin `HEAD~1` ne sert
+en pratique que pour les builds directs sur `main` après un merge déjà
+effectué, où comparer au commit précédent est le calcul voulu, pas une faille.
+
+**Règle d'équipe qui découle de ça** : ouvrir la PR (en *Draft*) dès le
+premier push d'une branche, même inachevée, plutôt que d'attendre qu'elle
+soit terminée. Ça bascule tout de suite en comparaison cumulée contre
+`main`, donc un service cassé reste visible et retesté à chaque push tant
+qu'il n'est pas corrigé — impossible qu'il "disparaisse" en ne touchant plus
+ce service dans les commits suivants. Le mode *Draft* évite juste qu'elle
+soit proposée à la review avant d'être prête ; les checks obligatoires et
+règles de protection s'appliquent pareil.
 
 ## Pourquoi le stage `Deploy` est vide
 

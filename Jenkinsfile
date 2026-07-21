@@ -1,3 +1,17 @@
+def buildService(svc) {
+    docker.image('maven:3.9-eclipse-temurin-21').inside('-v maven_repo:/root/.m2') {
+        sh "cd backend/${svc} && ./mvnw -B clean verify"
+    }
+}
+
+def sonarService(svc) {
+    withSonarQubeEnv('sonarqube') {
+        docker.image('maven:3.9-eclipse-temurin-21').inside('-v maven_repo:/root/.m2') {
+            sh "cd backend/${svc} && ./mvnw -B sonar:sonar -Dsonar.projectKey=travel-plan-${svc}"
+        }
+    }
+}
+
 pipeline {
     agent any
 
@@ -32,33 +46,52 @@ pipeline {
 
         stage('Build & Test') {
             when { expression { env.CHANGED_SERVICES } }
-            steps {
-                script {
-                    def services = env.CHANGED_SERVICES.split(',')
-                    def parallelStages = services.collectEntries { svc ->
-                        ["${svc}": {
-                            docker.image('maven:3.9-eclipse-temurin-21').inside('-v maven_repo:/root/.m2') {
-                                sh "cd backend/${svc} && ./mvnw -B clean verify"
-                            }
-                        }]
-                    }
-                    parallel parallelStages
+            parallel {
+                stage('api-gateway') {
+                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('api-gateway') } }
+                    steps { script { buildService('api-gateway') } }
+                }
+                stage('auth-service') {
+                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('auth-service') } }
+                    steps { script { buildService('auth-service') } }
+                }
+                stage('payment-service') {
+                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('payment-service') } }
+                    steps { script { buildService('payment-service') } }
+                }
+                stage('travel-service') {
+                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('travel-service') } }
+                    steps { script { buildService('travel-service') } }
+                }
+                stage('user-service') {
+                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('user-service') } }
+                    steps { script { buildService('user-service') } }
                 }
             }
         }
 
         stage('SonarQube Analysis') {
             when { expression { env.CHANGED_SERVICES } }
-            steps {
-                script {
-                    def services = env.CHANGED_SERVICES.split(',')
-                    withSonarQubeEnv('sonarqube') {
-                        services.each { svc ->
-                            docker.image('maven:3.9-eclipse-temurin-21').inside('-v maven_repo:/root/.m2') {
-                                sh "cd backend/${svc} && ./mvnw -B sonar:sonar -Dsonar.projectKey=travel-plan-${svc}"
-                            }
-                        }
-                    }
+            parallel {
+                stage('api-gateway') {
+                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('api-gateway') } }
+                    steps { script { sonarService('api-gateway') } }
+                }
+                stage('auth-service') {
+                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('auth-service') } }
+                    steps { script { sonarService('auth-service') } }
+                }
+                stage('payment-service') {
+                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('payment-service') } }
+                    steps { script { sonarService('payment-service') } }
+                }
+                stage('travel-service') {
+                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('travel-service') } }
+                    steps { script { sonarService('travel-service') } }
+                }
+                stage('user-service') {
+                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('user-service') } }
+                    steps { script { sonarService('user-service') } }
                 }
             }
         }
