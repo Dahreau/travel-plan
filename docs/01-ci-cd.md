@@ -88,13 +88,72 @@ flowchart LR
 
 - `infra/ci/jenkins/Dockerfile` + `plugins.txt` : image Jenkins avec les
   plugins nécessaires (Git, GitHub, Pipeline, Docker Pipeline, SonarQube
-  Scanner, Configuration as Code).
+  Scanner, Configuration as Code), et le **CLI Docker** copié depuis l'image
+  officielle `docker:27-cli` (multi-stage build) — Jenkins tourne lui-même
+  dans un conteneur et doit piloter le Docker de la machine hôte (via
+  `/var/run/docker.sock` monté dans `docker-compose.yml`) pour lancer les
+  conteneurs Maven éphémères du Jenkinsfile ; le socket seul ne suffit pas,
+  il faut aussi le binaire `docker` à l'intérieur du conteneur Jenkins pour
+  parler à ce socket ("Docker outside of Docker").
 - `infra/ci/jenkins/casc.yaml` : configuration Jenkins as Code — utilisateur
   admin, connexion au serveur SonarQube, credentials injectés depuis les
   variables d'environnement (jamais en dur dans le fichier).
 - `infra/ci/docker-compose.yml` : Jenkins + SonarQube + la base Postgres de
   SonarQube, avec un volume Maven partagé (`maven_repo`) pour ne pas
   retélécharger les dépendances à chaque build.
+
+## Comprendre le Jenkinsfile
+
+`pipeline { agent any ... }` — squelette général ; `agent any` = exécuté sur
+Jenkins lui-même, pas de machine de build séparée.
+
+`options { timestamps(); ansiColor('xterm'); disableConcurrentBuilds() }` —
+`timestamps()` préfixe chaque ligne de log par l'heure, `ansiColor` affiche
+les couleurs produites par certains outils, `disableConcurrentBuilds()`
+empêche deux builds du même job de tourner en même temps.
+
+`stage('Nom') { steps { ... } }` — une étape nommée, affichée comme une case
+dans la vue graphique de Jenkins. `script { ... }` à l'intérieur est une
+échappatoire vers du vrai Groovy (variables, boucles, conditions) — la
+syntaxe déclarative pure est trop rigide pour ce qu'on fait dans "Detect
+changed services" et "Build & Test".
+
+`checkout scm` — récupère exactement la révision (branche ou PR) pour
+laquelle Jenkins a été déclenché, en réutilisant la config du job (le repo
+GitHub lié au Multibranch Pipeline) — pas d'URL en dur, le même Jenkinsfile
+sert pour n'importe quelle branche ou PR.
+
+`env.CHANGED_SERVICES = ...` — stocke une valeur dans une variable
+d'environnement lisible par les stages suivants ; c'est le pont entre
+"Detect changed services" et "Build & Test".
+
+`sh(script: "...", returnStdout: true).trim()` — récupère la sortie d'une
+commande shell comme une chaîne Groovy manipulable (`.split`, `.contains`,
+`.findAll`) plutôt que de juste l'exécuter.
+
+`collectEntries { svc -> [(svc): { ... }] }` — transforme la liste des
+services modifiés en une map nom → bloc d'instructions ; `parallel
+parallelStages` exécute chaque bloc en même temps, un thread par service
+(visible dans la Console Output comme `Branch: api-gateway`, `Branch:
+auth-service`... en parallèle).
+
+`docker.image('maven:...').inside('-v maven_repo:/root/.m2') { sh "..." }` —
+plugin Docker Pipeline : démarre un conteneur jetable depuis cette image, y
+monte automatiquement le workspace, exécute les commandes dedans, puis le
+détruit. Nécessite le CLI `docker` dans le conteneur Jenkins (voir plus haut).
+
+`withSonarQubeEnv('sonarqube') { ... }` — injecte l'URL et le token du
+serveur SonarQube configuré dans Jenkins (JCasC), sans les coder en dur dans
+l'appel `mvn sonar:sonar`.
+
+`waitForQualityGate abortPipeline: true` — met le pipeline en pause (sans
+sonder en boucle) jusqu'à ce que SonarQube notifie Jenkins via son webhook
+que l'analyse est terminée, et échoue tout le build si le quality gate ne
+passe pas.
+
+`when { expression {...} }` / `when { branch 'main' }` — conditions qui
+décident si un stage s'exécute pour ce build précis (pas de build/test/sonar
+si aucun service backend n'a changé ; `Deploy` seulement sur `main`).
 
 ## Ce qui reste à faire (hors scope de cette étape)
 
