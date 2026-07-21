@@ -3,6 +3,7 @@ github
 github-branch-source
 workflow-aggregator
 pipeline-stage-view
+pipeline-graph-view
 docker-workflow
 sonar
 configuration-as-code
