@@ -1,14 +1,10 @@
 def buildService(svc) {
-    docker.image('maven:3.9-eclipse-temurin-21').inside('-v maven_repo:/root/.m2') {
-        sh "cd backend/${svc} && ./mvnw -B clean verify"
-    }
+    sh "cd backend/${svc} && ./mvnw -B clean verify"
 }
 
 def sonarService(svc) {
     withSonarQubeEnv('sonarqube') {
-        docker.image('maven:3.9-eclipse-temurin-21').inside('-v maven_repo:/root/.m2') {
-            sh "cd backend/${svc} && ./mvnw -B sonar:sonar -Dsonar.projectKey=travel-plan-${svc}"
-        }
+        sh "cd backend/${svc} && ./mvnw -B sonar:sonar -Dsonar.projectKey=travel-plan-${svc}"
     }
 }
 
