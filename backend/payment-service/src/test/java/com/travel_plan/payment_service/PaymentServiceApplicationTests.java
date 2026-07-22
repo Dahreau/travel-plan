@@ -1,12 +1,20 @@
 package com.travel_plan.payment_service;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceInitializationAutoConfiguration;
+import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest(properties = "spring.autoconfigure.exclude="
-		+ "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
-		+ "org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration,"
-		+ "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration")
+@SpringBootTest
+@EnableAutoConfiguration(exclude = {
+		DataSourceAutoConfiguration.class,
+		DataSourceInitializationAutoConfiguration.class,
+		DataSourceTransactionManagerAutoConfiguration.class,
+		HibernateJpaAutoConfiguration.class
+})
 class PaymentServiceApplicationTests {
 
 	@Test

@@ -42,52 +42,24 @@ pipeline {
 
         stage('Build & Test') {
             when { expression { env.CHANGED_SERVICES } }
-            parallel {
-                stage('api-gateway') {
-                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('api-gateway') } }
-                    steps { script { buildService('api-gateway') } }
-                }
-                stage('auth-service') {
-                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('auth-service') } }
-                    steps { script { buildService('auth-service') } }
-                }
-                stage('payment-service') {
-                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('payment-service') } }
-                    steps { script { buildService('payment-service') } }
-                }
-                stage('travel-service') {
-                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('travel-service') } }
-                    steps { script { buildService('travel-service') } }
-                }
-                stage('user-service') {
-                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('user-service') } }
-                    steps { script { buildService('user-service') } }
+            steps {
+                script {
+                    def services = env.CHANGED_SERVICES.tokenize(',')
+                    parallel(services.collectEntries { svc ->
+                        [svc, { buildService(svc) }]
+                    })
                 }
             }
         }
 
         stage('SonarQube Analysis') {
             when { expression { env.CHANGED_SERVICES } }
-            parallel {
-                stage('api-gateway') {
-                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('api-gateway') } }
-                    steps { script { sonarService('api-gateway') } }
-                }
-                stage('auth-service') {
-                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('auth-service') } }
-                    steps { script { sonarService('auth-service') } }
-                }
-                stage('payment-service') {
-                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('payment-service') } }
-                    steps { script { sonarService('payment-service') } }
-                }
-                stage('travel-service') {
-                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('travel-service') } }
-                    steps { script { sonarService('travel-service') } }
-                }
-                stage('user-service') {
-                    when { expression { env.CHANGED_SERVICES.tokenize(',').contains('user-service') } }
-                    steps { script { sonarService('user-service') } }
+            steps {
+                script {
+                    def services = env.CHANGED_SERVICES.tokenize(',')
+                    parallel(services.collectEntries { svc ->
+                        [svc, { sonarService(svc) }]
+                    })
                 }
             }
         }

@@ -132,16 +132,17 @@ d'environnement lisible par les stages suivants ; c'est le pont entre
 commande shell comme une chaîne Groovy manipulable (`.split`, `.contains`,
 `.findAll`) plutôt que de juste l'exécuter.
 
-`stage('Build & Test') { parallel { stage('api-gateway') { when {...} steps {...} } ... } }`
-— les 5 services sont déclarés **statiquement** (noms fixes dans le fichier),
-chacun avec son propre `when` qui vérifie individuellement s'il fait partie
-de `CHANGED_SERVICES` (`env.CHANGED_SERVICES.tokenize(',').contains('nom')`)
-pour décider s'il doit tourner. Une version précédente générait ces stages
-dynamiquement (`collectEntries` + `parallel` construit au runtime) — plus
-courte à écrire, mais moins lisible pour 5 noms fixes et stables ; la version
-statique est gardée pour la lisibilité, au prix d'ajouter à la main un bloc
-pour un 6ᵉ service (ex. `discovery-service`) le jour où il apparaît, plutôt
-que ce soit automatique.
+`services.collectEntries { svc -> [svc, { buildService(svc) }] }` — construit
+au runtime une map `nom de service → closure à exécuter`, à partir de la seule
+liste `CHANGED_SERVICES` ; `parallel(...)` lance une branche par entrée de
+cette map, avec le nom du service comme nom de branche. Une version
+précédente déclarait les 5 services **statiquement** (un bloc `stage('nom')
+{ when {...} steps {...} }` répété 5 fois) : le déclencheur de ce choix était
+une hypothèse fausse sur le plugin `pipeline-stage-view`, corrigée depuis (la
+vraie cause d'un souci d'affichage était le plugin `pipeline-graph-view`
+manquant, sans rapport avec statique/dynamique — les deux fonctionnent avec
+les deux). Retour à la version dynamique : ajouter un 6ᵉ service ne demande
+plus qu'un dossier dans `backend/`, sans toucher au Jenkinsfile.
 
 Les fonctions `buildService(svc)` / `sonarService(svc)` définies en haut du
 Jenkinsfile (hors du bloc `pipeline { }`) évitent de dupliquer l'appel Maven 5
@@ -264,18 +265,32 @@ ne configure de base de données pour ce test.
 Plutôt que de brancher une base (réelle ou Testcontainers) pour un test qui
 ne vérifie encore aucune vraie requête, `AuthServiceApplicationTests`,
 `PaymentServiceApplicationTests`, `UserServiceApplicationTests` excluent
-`DataSourceAutoConfiguration`, `DataSourceTransactionManagerAutoConfiguration`
-et `HibernateJpaAutoConfiguration` via
-`@SpringBootTest(properties = "spring.autoconfigure.exclude=...")` ;
-`TravelServiceApplicationTests` exclut `Neo4jAutoConfiguration` et
-`Neo4jDataAutoConfiguration` de la même façon. Le test continue de vérifier
-ce qu'il est censé vérifier (le contexte Spring démarre) sans dépendre d'une
-infrastructure qui n'existe pas encore, et sans la remplacer par une base
-différente (H2 à la place de PostgreSQL, par exemple) qui masquerait de vrais
-problèmes plus tard. Dès qu'un vrai repository JPA/Neo4j sera écrit, ces
-exclusions seront remplacées par de vrais tests d'intégration
-(Testcontainers, voir plus haut) sur ce repository précis — pas par un
-retour à `@SpringBootTest` nu.
+`DataSourceAutoConfiguration`, `DataSourceInitializationAutoConfiguration`,
+`DataSourceTransactionManagerAutoConfiguration` et `HibernateJpaAutoConfiguration`
+via `@EnableAutoConfiguration(exclude = {...})` posé directement sur la classe
+de test, à côté de `@SpringBootTest` ; `TravelServiceApplicationTests` exclut
+`Neo4jAutoConfiguration`, `DataNeo4jAutoConfiguration` et
+`DataNeo4jRepositoriesAutoConfiguration` de la même façon. On utilise des
+imports de vraies classes plutôt qu'une chaîne de caractères
+(`@SpringBootTest(properties = "spring.autoconfigure.exclude=...")`) : une
+première version utilisait cette syntaxe avec les noms de package de Spring
+Boot 2.x/3.x (`org.springframework.boot.autoconfigure.jdbc...`), invalides
+depuis que Spring Boot 4 a éclaté `spring-boot-autoconfigure` en modules
+séparés par techno (`org.springframework.boot.jdbc.autoconfigure...`,
+`org.springframework.boot.hibernate.autoconfigure...`) — une chaîne de
+caractères qui pointe vers une classe inexistante ne provoque aucune erreur,
+elle est juste silencieusement ignorée, ce qui a laissé 3 des 5 services
+échouer sans message clair. Avec des imports réels, une classe déplacée ou
+renommée fait échouer la compilation immédiatement au lieu d'échouer
+silencieusement à l'exécution.
+
+Le test continue de vérifier ce qu'il est censé vérifier (le contexte Spring
+démarre) sans dépendre d'une infrastructure qui n'existe pas encore, et sans
+la remplacer par une base différente (H2 à la place de PostgreSQL, par
+exemple) qui masquerait de vrais problèmes plus tard. Dès qu'un vrai
+repository JPA/Neo4j sera écrit, ces exclusions seront remplacées par de
+vrais tests d'intégration (Testcontainers, voir plus haut) sur ce repository
+précis — pas par un retour à `@SpringBootTest` nu.
 
 ## Pourquoi `infra/ci/` est rangé sous `infra/`, séparé de `backend/`
 
