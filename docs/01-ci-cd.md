@@ -87,20 +87,21 @@ flowchart LR
 ## Ce qui est construit dans `infra/ci/`
 
 - `infra/ci/jenkins/Dockerfile` + `plugins.txt` : image Jenkins avec les
-  plugins nécessaires (Git, GitHub, Pipeline, Docker Pipeline, SonarQube
-  Scanner, Configuration as Code), et le **CLI Docker** copié depuis l'image
-  officielle `docker:27-cli` (multi-stage build) — Jenkins tourne lui-même
-  dans un conteneur et doit piloter le Docker de la machine hôte (via
-  `/var/run/docker.sock` monté dans `docker-compose.yml`) pour lancer les
-  conteneurs Maven éphémères du Jenkinsfile ; le socket seul ne suffit pas,
-  il faut aussi le binaire `docker` à l'intérieur du conteneur Jenkins pour
-  parler à ce socket ("Docker outside of Docker").
+  plugins nécessaires (Git, GitHub, Pipeline, `pipeline-stage-view` pour
+  "Full Stage View", `pipeline-graph-view` pour "Pipeline Overview" — deux
+  plugins distincts, pas la même vue, voir plus bas —, Docker Pipeline,
+  SonarQube Scanner, Configuration as Code), et le **CLI Docker** copié depuis
+  l'image officielle `docker:27-cli` (multi-stage build), gardé pour le futur
+  stage `Deploy` (construire/pousser des images) même si `Build & Test` ne
+  s'en sert plus aujourd'hui (voir "Pourquoi mvnw tourne directement sur
+  Jenkins" plus bas).
 - `infra/ci/jenkins/casc.yaml` : configuration Jenkins as Code — utilisateur
   admin, connexion au serveur SonarQube, credentials injectés depuis les
   variables d'environnement (jamais en dur dans le fichier).
 - `infra/ci/docker-compose.yml` : Jenkins + SonarQube + la base Postgres de
-  SonarQube, avec un volume Maven partagé (`maven_repo`) pour ne pas
-  retélécharger les dépendances à chaque build.
+  SonarQube, avec un volume Maven partagé (`maven_repo`, monté sur
+  `/var/jenkins_home/.m2` — le `$HOME` de l'utilisateur `jenkins`, pas
+  `/root`) pour ne pas retélécharger les dépendances à chaque build.
 
 ## Comprendre le Jenkinsfile
 
@@ -137,20 +138,17 @@ chacun avec son propre `when` qui vérifie individuellement s'il fait partie
 de `CHANGED_SERVICES` (`env.CHANGED_SERVICES.tokenize(',').contains('nom')`)
 pour décider s'il doit tourner. Une version précédente générait ces stages
 dynamiquement (`collectEntries` + `parallel` construit au runtime) — plus
-courte à écrire, mais le plugin `pipeline-stage-view` (la vue "Pipeline
-Overview" en blocs colorés) ne sait pas afficher des branches parallèles dont
-les noms ne sont connus qu'à l'exécution. Le prix de la version statique :
-ajouter un 6ᵉ service (ex. `discovery-service`) demande d'ajouter son bloc à
-la main plutôt que ce soit automatique — accepté pour retrouver la
-visualisation.
+courte à écrire, mais moins lisible pour 5 noms fixes et stables ; la version
+statique est gardée pour la lisibilité, au prix d'ajouter à la main un bloc
+pour un 6ᵉ service (ex. `discovery-service`) le jour où il apparaît, plutôt
+que ce soit automatique.
 
-`docker.image('maven:...').inside('-v maven_repo:/root/.m2') { sh "..." }` —
-plugin Docker Pipeline : démarre un conteneur jetable depuis cette image, y
-monte automatiquement le workspace, exécute les commandes dedans, puis le
-détruit. Nécessite le CLI `docker` dans le conteneur Jenkins (voir plus haut).
 Les fonctions `buildService(svc)` / `sonarService(svc)` définies en haut du
-Jenkinsfile (hors du bloc `pipeline { }`) évitent de dupliquer cet appel 5
-fois pour le build et 5 fois pour l'analyse Sonar.
+Jenkinsfile (hors du bloc `pipeline { }`) évitent de dupliquer l'appel Maven 5
+fois pour le build et 5 fois pour l'analyse Sonar : `sh "cd backend/${svc} &&
+./mvnw -B clean verify"` lance Maven **directement sur l'agent Jenkins**, pas
+dans un conteneur Docker jetable (voir "Pourquoi `mvnw` tourne directement sur
+Jenkins" plus bas).
 
 `withSonarQubeEnv('sonarqube') { ... }` — injecte l'URL et le token du
 serveur SonarQube configuré dans Jenkins (JCasC), sans les coder en dur dans
@@ -230,6 +228,54 @@ lorsque ces deux briques existent — elles ne sont pas encore construites à ce
 stade du projet. Le stage reste présent (branché sur `main` uniquement) pour
 que la structure du pipeline n'ait pas à être réécrite plus tard, seul son
 contenu sera rempli le moment venu, à l'étape Ansible.
+
+## Pourquoi `mvnw` tourne directement sur Jenkins
+
+`buildService`/`sonarService` lancent `./mvnw` directement sur le conteneur
+Jenkins (qui a déjà un JDK 21 via l'image de base), pas dans un conteneur
+Maven éphémère (`docker.image('maven:...').inside(...)`) comme prévu
+initialement. Le conteneur Jenkins tourne en utilisateur non-root `jenkins`,
+qui n'a pas les droits sur `/var/run/docker.sock` monté depuis l'hôte
+(`permission denied` à la première tentative) ; réparer ça proprement demande
+de gérer les groupes Unix/UID entre l'hôte et le conteneur, pour un bénéfice
+nul aujourd'hui — isoler un build Maven dans un conteneur jetable n'apporte
+rien tant que les 5 services sont des coquilles Spring Initializr sans aucune
+dépendance système propre à isoler. Le CLI Docker reste installé dans l'image
+Jenkins (voir plus haut) : il resservira pour le stage `Deploy`, qui devra lui
+piloter le vrai Docker de l'hôte pour construire/pousser des images.
+
+Ce choix n'a aucune raison d'être revu quand du vrai code arrivera dans les
+services : `mvn clean verify` et `mvn sonar:sonar` tournent à l'identique sur
+une coquille vide ou sur un service avec de vraies classes — seul le stage
+`Deploy` (construction d'images applicatives) aura besoin du CLI Docker qui
+est déjà en place.
+
+## Pourquoi les tests `contextLoads()` excluent la base de données
+
+Les 5 services partent de coquilles Spring Initializr avec un seul test
+généré, `contextLoads()`, qui démarre tout le contexte Spring. Par défaut,
+`auth-service`, `payment-service` et `user-service` (JPA + driver
+PostgreSQL) et `travel-service` (Spring Data Neo4j) essaient à ce moment-là
+de se connecter à une vraie base — absente sur l'agent Jenkins, qui ne fait
+tourner que Maven, pas la stack applicative. Sans correction, ces 4 builds
+échouent aujourd'hui non pas à cause de Jenkins/Docker, mais parce que rien
+ne configure de base de données pour ce test.
+
+Plutôt que de brancher une base (réelle ou Testcontainers) pour un test qui
+ne vérifie encore aucune vraie requête, `AuthServiceApplicationTests`,
+`PaymentServiceApplicationTests`, `UserServiceApplicationTests` excluent
+`DataSourceAutoConfiguration`, `DataSourceTransactionManagerAutoConfiguration`
+et `HibernateJpaAutoConfiguration` via
+`@SpringBootTest(properties = "spring.autoconfigure.exclude=...")` ;
+`TravelServiceApplicationTests` exclut `Neo4jAutoConfiguration` et
+`Neo4jDataAutoConfiguration` de la même façon. Le test continue de vérifier
+ce qu'il est censé vérifier (le contexte Spring démarre) sans dépendre d'une
+infrastructure qui n'existe pas encore, et sans la remplacer par une base
+différente (H2 à la place de PostgreSQL, par exemple) qui masquerait de vrais
+problèmes plus tard. Dès qu'un vrai repository JPA/Neo4j sera écrit, ces
+exclusions seront remplacées par de vrais tests d'intégration
+(Testcontainers, voir plus haut) sur ce repository précis — pas par un
+retour à `@SpringBootTest` nu.
 
 ## Pourquoi `infra/ci/` est rangé sous `infra/`, séparé de `backend/`
 
