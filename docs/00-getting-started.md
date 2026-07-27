@@ -13,7 +13,7 @@ ne documente que ce qui existe réellement dans le repo au moment où tu la lis.
 
 ## Ce qui tourne réellement aujourd'hui
 
-Seule la stack CI (Jenkins + SonarQube) est fonctionnelle pour l'instant :
+La stack CI (Jenkins + SonarQube) :
 
 ```powershell
 cd infra/ci
@@ -24,14 +24,21 @@ docker compose up -d --build
 Détail complet (variables à remplir, réglages manuels restants) dans
 [`01-ci-cd.md`](01-ci-cd.md).
 
-Le `docker-compose.yml` à la racine du repo est réservé à la stack
-applicative (Postgres, Neo4j, Vault, Zipkin, les microservices) — il est
-encore vide, il sera rempli à l'étape "Docker Compose infra complète" du plan.
+La stack applicative (Postgres, Neo4j, Vault, Zipkin) :
+
+```powershell
+Copy-Item .env.example .env
+docker compose up -d --build
+```
+
+Détail complet dans [`02-app-infra.md`](02-app-infra.md). Les microservices
+eux-mêmes ne sont pas encore branchés dessus (voir cette page).
 
 ## Sommaire de la doc (au fur et à mesure des branches)
 
 - [`00-getting-started.md`](00-getting-started.md) — cette page.
 - [`01-ci-cd.md`](01-ci-cd.md) — Jenkins, SonarQube, pipeline (branche `chore/setup-jenkins`).
+- [`02-app-infra.md`](02-app-infra.md) — Postgres, Neo4j, Vault, Zipkin (branche `chore/setup-app-infra`).
 
 Chaque nouvelle page prend le numéro suivant au moment où sa branche est
 construite — pas de trous ni de numéros réservés à l'avance, pour éviter le

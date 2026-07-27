@@ -36,7 +36,43 @@ pipeline {
                     def allServices = sh(script: 'ls backend', returnStdout: true).trim().split('\n') as List
                     env.CHANGED_SERVICES = allServices.findAll { svc -> changedFiles.contains("backend/${svc}/") }.join(',')
                     echo env.CHANGED_SERVICES ? "Services modifiés : ${env.CHANGED_SERVICES}" : 'Aucun service backend modifié.'
+
+                    env.INFRA_CHANGED = (changedFiles.contains('docker-compose.yml') || changedFiles.contains('infra/')) ? 'true' : 'false'
+                    echo "Infra modifiée : ${env.INFRA_CHANGED}"
                 }
+            }
+        }
+
+        stage('Validate infra') {
+            when { expression { env.INFRA_CHANGED == 'true' } }
+            steps {
+                sh '''
+                    set -e
+                    if [ -d infra ]; then
+                        for f in $(find infra -name "*.sh"); do
+                            echo "Shell : $f"
+                            bash -n "$f"
+                        done
+                    fi
+                '''
+                sh '''
+                    set -e
+                    cat > .env.ci <<EOF
+POSTGRES_ADMIN_PASSWORD=ci_dummy
+AUTH_DB_PASSWORD=ci_dummy
+USER_DB_PASSWORD=ci_dummy
+PAYMENT_DB_PASSWORD=ci_dummy
+NEO4J_PASSWORD=ci_dummy
+VAULT_DEV_ROOT_TOKEN=ci_dummy
+POSTGRES_HOST_PORT=15432
+NEO4J_HTTP_HOST_PORT=17474
+NEO4J_BOLT_HOST_PORT=17687
+VAULT_HOST_PORT=18200
+ZIPKIN_HOST_PORT=19411
+EOF
+                    trap 'docker compose --env-file .env.ci -p travel-plan-app-citest down -v; rm -f .env.ci' EXIT
+                    docker compose --env-file .env.ci -p travel-plan-app-citest up -d --wait --wait-timeout 180
+                '''
             }
         }
 

@@ -90,18 +90,21 @@ flowchart LR
   plugins nécessaires (Git, GitHub, Pipeline, `pipeline-stage-view` pour
   "Full Stage View", `pipeline-graph-view` pour "Pipeline Overview" — deux
   plugins distincts, pas la même vue, voir plus bas —, Docker Pipeline,
-  SonarQube Scanner, Configuration as Code), et le **CLI Docker** copié depuis
-  l'image officielle `docker:27-cli` (multi-stage build), gardé pour le futur
-  stage `Deploy` (construire/pousser des images) même si `Build & Test` ne
-  s'en sert plus aujourd'hui (voir "Pourquoi mvnw tourne directement sur
-  Jenkins" plus bas).
+  SonarQube Scanner, Configuration as Code), le **CLI Docker** copié depuis
+  l'image officielle `docker:27-cli` (multi-stage build), et le **plugin
+  `docker compose`** copié depuis `docker/compose-bin:v5.3.1` (image officielle
+  dédiée à cet usage) — les deux sont gardés pour le futur stage `Deploy`
+  autant que pour le stage `Validate infra` d'aujourd'hui (voir plus bas et
+  "Pourquoi mvnw tourne directement sur Jenkins").
 - `infra/ci/jenkins/casc.yaml` : configuration Jenkins as Code — utilisateur
   admin, connexion au serveur SonarQube, credentials injectés depuis les
   variables d'environnement (jamais en dur dans le fichier).
 - `infra/ci/docker-compose.yml` : Jenkins + SonarQube + la base Postgres de
   SonarQube, avec un volume Maven partagé (`maven_repo`, monté sur
   `/var/jenkins_home/.m2` — le `$HOME` de l'utilisateur `jenkins`, pas
-  `/root`) pour ne pas retélécharger les dépendances à chaque build.
+  `/root`) pour ne pas retélécharger les dépendances à chaque build, et un
+  service `docker-socket-proxy` (voir "Pourquoi un proxy plutôt que monter
+  `docker.sock` directement" plus bas).
 
 ## Comprendre le Jenkinsfile
 
@@ -127,6 +130,12 @@ sert pour n'importe quelle branche ou PR.
 `env.CHANGED_SERVICES = ...` — stocke une valeur dans une variable
 d'environnement lisible par les stages suivants ; c'est le pont entre
 "Detect changed services" et "Build & Test".
+
+`env.INFRA_CHANGED = ... ? 'true' : 'false'` — même principe que
+`CHANGED_SERVICES`, mais pour tout ce qui n'est pas du code Java :
+`docker-compose.yml` (racine ou `infra/ci/`) et tout fichier sous `infra/`.
+Sert de condition au stage `Validate infra` (voir "Pourquoi valider l'infra
+dans Jenkins" plus bas).
 
 `sh(script: "...", returnStdout: true).trim()` — récupère la sortie d'une
 commande shell comme une chaîne Groovy manipulable (`.split`, `.contains`,
@@ -222,6 +231,44 @@ ce service dans les commits suivants. Le mode *Draft* évite juste qu'elle
 soit proposée à la review avant d'être prête ; les checks obligatoires et
 règles de protection s'appliquent pareil.
 
+## Pourquoi valider l'infra dans Jenkins
+
+`CHANGED_SERVICES` ne regarde que `backend/` : une PR qui ne touche que
+`docker-compose.yml` ou `infra/` (Postgres, Vault...) a une liste de services
+vide, donc `Build & Test`/`SonarQube Analysis`/`Quality Gate` sont tous
+sautés — le check Jenkins passe, mais sans avoir rien vérifié du tout sur ce
+qui a changé. Un check vert qui ne contrôle rien est pire qu'utile : il donne
+une fausse confiance au moment de merger.
+
+Le stage `Validate infra` comble ce trou avec un vrai test, pas juste une
+vérification de syntaxe : il vérifie d'abord que chaque script `.sh` sous
+`infra/` n'a pas d'erreur shell (`bash -n`, rapide, sans exécuter), puis
+lance réellement `docker compose up -d --wait` sur `docker-compose.yml` (la
+stack applicative — Postgres, Neo4j, Vault, Zipkin) et attend que tous les
+conteneurs passent `healthy`, avant de tout redémonter (`down -v`) dans tous
+les cas, succès ou échec (`trap ... EXIT` côté shell — garantit le nettoyage
+même si `--wait` timeout). C'est ce niveau de test qui aurait attrapé les
+deux vrais bugs qu'on a eu en le testant à la main (le montage de volume
+Postgres 18, le mismatch HTTP/HTTPS de Vault) — une simple vérification de
+syntaxe YAML ne les aurait pas vus, ce sont des erreurs de démarrage, pas de
+syntaxe.
+
+Pour ne pas entrer en conflit avec la stack que tu fais tourner toi-même en
+local pendant que tu développes, ce test utilise un nom de projet Compose
+différent (`-p travel-plan-app-citest`) et des ports alternatifs
+(`.env.ci` généré à la volée, jamais commité) — d'où les variables
+`POSTGRES_HOST_PORT`/`NEO4J_HTTP_HOST_PORT`/etc. dans `docker-compose.yml`
+(voir `docs/02-app-infra.md`), qui ne changent rien à ton usage quotidien
+(valeurs par défaut identiques) mais permettent à Jenkins de tourner en
+parallèle sans toucher tes ports 5432/7474/etc.
+
+Reste une vraie limite, assumée : ça ne vérifie que "les conteneurs
+démarrent et deviennent healthy", pas la correction fonctionnelle complète
+(ex: est-ce qu'`init-databases.sh` crée bien 3 bases avec les bonnes
+permissions). Un test plus poussé de ce niveau-là viendra avec de vrais
+tests d'intégration, une fois qu'il y aura du code applicatif à tester
+dessus.
+
 ## Pourquoi le stage `Deploy` est vide
 
 Construire des images Docker et appeler un playbook Ansible n'a de sens que
@@ -234,16 +281,35 @@ contenu sera rempli le moment venu, à l'étape Ansible.
 
 `buildService`/`sonarService` lancent `./mvnw` directement sur le conteneur
 Jenkins (qui a déjà un JDK 21 via l'image de base), pas dans un conteneur
-Maven éphémère (`docker.image('maven:...').inside(...)`) comme prévu
-initialement. Le conteneur Jenkins tourne en utilisateur non-root `jenkins`,
-qui n'a pas les droits sur `/var/run/docker.sock` monté depuis l'hôte
-(`permission denied` à la première tentative) ; réparer ça proprement demande
-de gérer les groupes Unix/UID entre l'hôte et le conteneur, pour un bénéfice
-nul aujourd'hui — isoler un build Maven dans un conteneur jetable n'apporte
-rien tant que les 5 services sont des coquilles Spring Initializr sans aucune
-dépendance système propre à isoler. Le CLI Docker reste installé dans l'image
-Jenkins (voir plus haut) : il resservira pour le stage `Deploy`, qui devra lui
-piloter le vrai Docker de l'hôte pour construire/pousser des images.
+Maven éphémère (`docker.image('maven:...').inside(...)`). Isoler un build
+Maven dans un conteneur jetable n'apporte rien tant que les 5 services sont
+des coquilles Spring Initializr sans aucune dépendance système propre à
+isoler — rien à voir avec un souci de permission (voir juste en dessous, ce
+souci-là est réglé). Le jour où ça change, ce sera un choix technique
+(véritable isolation utile), pas une contrainte.
+
+## Pourquoi un proxy plutôt que monter `docker.sock` directement
+
+Le premier blocage rencontré (`permission denied` sur `/var/run/docker.sock`)
+aurait pu se réparer vite fait en ajoutant l'utilisateur `jenkins` à un
+groupe `docker` avec le bon GID. On ne l'a pas fait, parce que ce
+"correctif rapide" donne à Jenkins un accès complet au démon Docker de
+l'hôte — l'équivalent d'un accès root sur la machine qui héberge tout,
+n'importe quel job Jenkins pourrait alors monter n'importe quel dossier de
+l'hôte ou lancer n'importe quel conteneur. Complètement à l'opposé du
+moindre privilège demandé par l'énoncé, pour gagner juste le droit de lancer
+`docker compose up`/`down`.
+
+`docker-socket-proxy` (`tecnativa/docker-socket-proxy`, dans
+`infra/ci/docker-compose.yml`) se branche lui sur le vrai `docker.sock`
+(lecture seule), et n'expose à Jenkins qu'un sous-ensemble précis de l'API
+Docker via HTTP (`CONTAINERS`, `IMAGES`, `NETWORKS`, `VOLUMES`, `POST` —
+tout le reste explicitement à `0`, refusé par défaut). Jenkins ne touche
+plus jamais le socket brut : il parle à `tcp://docker-socket-proxy:2375`
+(variable `DOCKER_HOST`), et ce proxy refuse toute requête hors de la liste
+autorisée. Le CLI `docker` + le plugin `docker compose` restent installés
+dans l'image Jenkins (voir plus haut) pour pouvoir émettre ces requêtes —
+utilisés dès aujourd'hui par `Validate infra`, et plus tard par `Deploy`.
 
 Ce choix n'a aucune raison d'être revu quand du vrai code arrivera dans les
 services : `mvn clean verify` et `mvn sonar:sonar` tournent à l'identique sur
