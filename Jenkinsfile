@@ -71,7 +71,11 @@ VAULT_HOST_PORT=18200
 ZIPKIN_HOST_PORT=19411
 EOF
                     trap 'docker compose --env-file .env.ci -p travel-plan-app-citest down -v; rm -f .env.ci' EXIT
-                    docker compose --env-file .env.ci -p travel-plan-app-citest up -d --wait --wait-timeout 180
+                    docker compose --env-file .env.ci -p travel-plan-app-citest up -d --wait --wait-timeout 180 || {
+                        echo "--- up --wait failed, dumping logs before teardown ---"
+                        docker compose --env-file .env.ci -p travel-plan-app-citest logs
+                        exit 1
+                    }
                 '''
             }
         }
