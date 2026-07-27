@@ -34,10 +34,16 @@ pipeline {
                     def baseRef = env.CHANGE_TARGET ? "origin/${env.CHANGE_TARGET}" : 'HEAD~1'
                     def changedFiles = sh(script: "git diff --name-only ${baseRef} HEAD", returnStdout: true).trim()
                     def allServices = sh(script: 'ls backend', returnStdout: true).trim().split('\n') as List
-                    env.CHANGED_SERVICES = allServices.findAll { svc -> changedFiles.contains("backend/${svc}/") }.join(',')
-                    echo env.CHANGED_SERVICES ? "Services modifiés : ${env.CHANGED_SERVICES}" : 'Aucun service backend modifié.'
+                    def jenkinsfileChanged = changedFiles.contains('Jenkinsfile')
 
-                    env.INFRA_CHANGED = (changedFiles.contains('docker-compose.yml') || changedFiles.contains('infra/')) ? 'true' : 'false'
+                    env.CHANGED_SERVICES = jenkinsfileChanged
+                        ? allServices.join(',')
+                        : allServices.findAll { svc -> changedFiles.contains("backend/${svc}/") }.join(',')
+                    echo jenkinsfileChanged
+                        ? "Jenkinsfile modifié : tous les services seront testés (${env.CHANGED_SERVICES})"
+                        : (env.CHANGED_SERVICES ? "Services modifiés : ${env.CHANGED_SERVICES}" : 'Aucun service backend modifié.')
+
+                    env.INFRA_CHANGED = (changedFiles.contains('docker-compose.yml') || changedFiles.contains('infra/') || jenkinsfileChanged) ? 'true' : 'false'
                     echo "Infra modifiée : ${env.INFRA_CHANGED}"
                 }
             }
