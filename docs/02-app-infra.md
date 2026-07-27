@@ -21,9 +21,8 @@ configuré — jamais utilisé par les microservices eux-mêmes (voir plus bas).
 Les ports publiés (5432, 7474, 7687, 8200, 9411) sont paramétrables
 (`POSTGRES_HOST_PORT`, `NEO4J_HTTP_HOST_PORT`, etc. — voir `.env.example`)
 mais tu n'as normalement rien à changer : les valeurs par défaut restent ces
-ports habituels. Ça sert uniquement au test automatique que fait Jenkins
-(`Validate infra`, voir `01-ci-cd.md`), qui doit pouvoir lancer une copie de
-cette stack sans entrer en conflit avec celle que tu fais tourner toi-même.
+ports habituels. Utile seulement si tu dois faire tourner une deuxième copie
+de la stack en parallèle (conflit de port sur ta machine).
 
 ## Ce qui est construit
 

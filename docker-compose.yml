@@ -2,7 +2,7 @@ name: travel-plan-app
 
 services:
   postgres:
-    build: ./infra/postgres
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -15,6 +15,7 @@ services:
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -61,7 +62,7 @@ services:
       - app
 
   vault-init:
-    build: ./infra/vault
+    image: hashicorp/vault:2.0
     depends_on:
       vault:
         condition: service_healthy
@@ -69,6 +70,8 @@ services:
       VAULT_ADDR: http://vault:8200
       VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN}
     entrypoint: ["/bin/sh", "/vault-init/bootstrap.sh"]
+    volumes:
+      - ./infra/vault:/vault-init:ro
     restart: "no"
     networks:
       - app
