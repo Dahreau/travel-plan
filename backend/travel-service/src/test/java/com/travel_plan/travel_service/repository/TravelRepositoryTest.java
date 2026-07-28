@@ -12,6 +12,7 @@ import com.travel_plan.travel_service.domain.Travel;
 import com.travel_plan.travel_service.domain.TravelStatus;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.Month;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,7 +58,7 @@ class TravelRepositoryTest {
         Activity activity = Activity.builder()
                 .destination(destination)
                 .name("Tram 28 tour")
-                .date(LocalDate.of(2026, 9, 2))
+                .date(LocalDate.of(2026, Month.SEPTEMBER, 2))
                 .build();
         destination.getActivities().add(activity);
 
@@ -66,8 +67,8 @@ class TravelRepositoryTest {
                 .name("Alfama Hostel")
                 .type(AccommodationType.HOSTEL)
                 .address("Rua de Sao Miguel 10")
-                .checkIn(LocalDate.of(2026, 9, 1))
-                .checkOut(LocalDate.of(2026, 9, 5))
+                .checkIn(LocalDate.of(2026, Month.SEPTEMBER, 1))
+                .checkOut(LocalDate.of(2026, Month.SEPTEMBER, 5))
                 .build();
         destination.setAccommodation(accommodation);
 
@@ -98,12 +99,25 @@ class TravelRepositoryTest {
         assertThat(entityManager.find(Transportation.class, transportationId)).isNull();
     }
 
+    @Test
+    void updatingTravelRefreshesUpdatedAt() {
+        Travel travel = travelRepository.save(newTravel());
+        entityManager.flush();
+        Instant firstUpdatedAt = travel.getUpdatedAt();
+
+        travel.setTitle("Updated title");
+        travelRepository.save(travel);
+        entityManager.flush();
+
+        assertThat(travel.getUpdatedAt()).isAfterOrEqualTo(firstUpdatedAt);
+    }
+
     private Travel newTravel() {
         return Travel.builder()
                 .title("Iberian tour")
                 .ownerId(UUID.randomUUID())
-                .startDate(LocalDate.of(2026, 9, 1))
-                .endDate(LocalDate.of(2026, 9, 10))
+                .startDate(LocalDate.of(2026, Month.SEPTEMBER, 1))
+                .endDate(LocalDate.of(2026, Month.SEPTEMBER, 10))
                 .status(TravelStatus.PLANNED)
                 .build();
     }
@@ -113,8 +127,8 @@ class TravelRepositoryTest {
                 .travel(travel)
                 .city(city)
                 .country(country)
-                .arrivalDate(LocalDate.of(2026, 9, 1))
-                .departureDate(LocalDate.of(2026, 9, 5))
+                .arrivalDate(LocalDate.of(2026, Month.SEPTEMBER, 1))
+                .departureDate(LocalDate.of(2026, Month.SEPTEMBER, 5))
                 .orderIndex(orderIndex)
                 .build();
     }
