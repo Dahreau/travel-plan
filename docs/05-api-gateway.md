@@ -4,7 +4,7 @@
 
 ## Lancer en local
 
-Prérequis : `auth-service` (port 8081), `user-service` (port 8082) et `travel-service` (port 8083) tournent déjà (voir leurs pages respectives), plus Vault et Zipkin (`./scripts/start-app.sh`).
+Prérequis : `auth-service` (port 8081), `user-service` (port 8082), `travel-service` (port 8083) et `payment-service` (port 8084) tournent déjà (voir leurs pages respectives), plus Vault et Zipkin (`./scripts/start-app.sh`).
 
 Récupère les identifiants AppRole d'`api-gateway` :
 
@@ -31,8 +31,10 @@ Le gateway écoute sur `:8080`. Toutes les requêtes passent par lui : `curl htt
 | `/api/auth/**` (reste) | `auth-service` | oui |
 | `/api/users/**` | `user-service` | oui |
 | `/api/travels/**` | `travel-service` | oui |
+| `/api/payments/**` | `payment-service` | oui |
+| `/api/payment-methods/**` | `payment-service` | oui |
 
-Le chemin n'est pas réécrit : `/api/auth/login` arrive tel quel sur `auth-service`, `/api/users/{id}` tel quel sur `user-service`, `/api/travels/{id}` tel quel sur `travel-service`.
+Le chemin n'est pas réécrit : `/api/auth/login` arrive tel quel sur `auth-service`, `/api/users/{id}` tel quel sur `user-service`, `/api/travels/{id}` tel quel sur `travel-service`, `/api/payments/{id}` tel quel sur `payment-service`.
 
 ## Ce qui est construit
 
