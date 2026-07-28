@@ -2,7 +2,6 @@ package com.travel_plan.auth_service.vault;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -91,7 +90,7 @@ class VaultClientTest {
 
         when(restClient.post()).thenReturn(bodyUriSpec);
         when(bodyUriSpec.uri(VAULT_ADDR + "/v1/auth/approle/login")).thenReturn(bodySpec);
-        when(bodySpec.body(eq(Map.of("role_id", "role", "secret_id", "secret")))).thenReturn(bodySpec);
+        when(bodySpec.body(Map.of("role_id", "role", "secret_id", "secret"))).thenReturn(bodySpec);
         when(bodySpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(VaultLoginResponse.class)).thenReturn(response);
     }
