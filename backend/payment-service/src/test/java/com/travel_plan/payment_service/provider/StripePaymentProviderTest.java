@@ -50,10 +50,9 @@ class StripePaymentProviderTest {
     @Test
     void chargeThrowsWhenStripeResponseHasNoId() {
         stubStripeResponse(Map.of("status", "succeeded"));
+        ChargeRequest request = new ChargeRequest(new BigDecimal("10.00"), "EUR", "pm_card_visa");
 
-        assertThatThrownBy(() ->
-                        provider.charge(new ChargeRequest(new BigDecimal("10.00"), "EUR", "pm_card_visa")))
-                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> provider.charge(request)).isInstanceOf(IllegalStateException.class);
     }
 
     private void stubStripeResponse(Map<String, Object> response) {

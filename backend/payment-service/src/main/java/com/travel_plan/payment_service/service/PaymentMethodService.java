@@ -25,8 +25,7 @@ public class PaymentMethodService {
 
     @Transactional(readOnly = true)
     public PaymentMethod findById(UUID id) {
-        return paymentMethodRepository.findById(id)
-                .orElseThrow(() -> new PaymentMethodNotFoundException(id));
+        return getOrThrow(id);
     }
 
     @Transactional
@@ -45,7 +44,7 @@ public class PaymentMethodService {
 
     @Transactional
     public PaymentMethod update(UUID id, PaymentMethodRequest request) {
-        PaymentMethod method = findById(id);
+        PaymentMethod method = getOrThrow(id);
         method.setOwnerId(request.ownerId());
         method.setProvider(request.provider());
         method.setType(request.type());
@@ -58,7 +57,12 @@ public class PaymentMethodService {
 
     @Transactional
     public void delete(UUID id) {
-        PaymentMethod method = findById(id);
+        PaymentMethod method = getOrThrow(id);
         paymentMethodRepository.delete(method);
+    }
+
+    private PaymentMethod getOrThrow(UUID id) {
+        return paymentMethodRepository.findById(id)
+                .orElseThrow(() -> new PaymentMethodNotFoundException(id));
     }
 }

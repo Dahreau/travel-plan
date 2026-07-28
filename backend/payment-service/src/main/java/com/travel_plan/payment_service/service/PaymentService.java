@@ -40,8 +40,7 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public Payment findById(UUID id) {
-        return paymentRepository.findById(id)
-                .orElseThrow(() -> new PaymentNotFoundException(id));
+        return getOrThrow(id);
     }
 
     @Transactional
@@ -67,11 +66,16 @@ public class PaymentService {
 
     @Transactional
     public Payment refund(UUID id) {
-        Payment payment = findById(id);
+        Payment payment = getOrThrow(id);
         if (payment.getStatus() != PaymentStatus.SUCCEEDED) {
             throw new InvalidRefundException(id);
         }
         payment.setStatus(PaymentStatus.REFUNDED);
         return paymentRepository.save(payment);
+    }
+
+    private Payment getOrThrow(UUID id) {
+        return paymentRepository.findById(id)
+                .orElseThrow(() -> new PaymentNotFoundException(id));
     }
 }

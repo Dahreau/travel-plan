@@ -59,9 +59,9 @@ class PayPalPaymentProviderTest {
     @Test
     void chargeThrowsWhenAccessTokenMissing() {
         stubOAuthToken(null);
+        ChargeRequest request = new ChargeRequest(new BigDecimal("10.00"), "EUR", "vault-token-1");
 
-        assertThatThrownBy(() ->
-                        provider.charge(new ChargeRequest(new BigDecimal("10.00"), "EUR", "vault-token-1")))
+        assertThatThrownBy(() -> provider.charge(request))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("access token");
     }
@@ -70,9 +70,9 @@ class PayPalPaymentProviderTest {
     void chargeThrowsWhenOrderIdMissing() {
         stubOAuthToken("access-token-123");
         stubCreateOrder(Map.of("status", "COMPLETED"));
+        ChargeRequest request = new ChargeRequest(new BigDecimal("10.00"), "EUR", "vault-token-1");
 
-        assertThatThrownBy(() ->
-                        provider.charge(new ChargeRequest(new BigDecimal("10.00"), "EUR", "vault-token-1")))
+        assertThatThrownBy(() -> provider.charge(request))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("order id");
     }
