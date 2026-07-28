@@ -24,6 +24,8 @@ VAULT_ADDR=http://localhost:8200 VAULT_ROLE_ID=<role_id> VAULT_SECRET_ID=<secret
 
 Au premier démarrage, un admin par défaut est créé (`admin` / `changeme_dev_only` sauf si tu surcharges `DEFAULT_ADMIN_USERNAME`/`DEFAULT_ADMIN_PASSWORD`) — change ce mot de passe avant tout usage réel.
 
+Le service écoute sur `:8081` (voir [`05-api-gateway.md`](05-api-gateway.md) pour y accéder via le gateway plutôt qu'en direct).
+
 ## Endpoints
 
 | Méthode | Route | Accès | Rôle |

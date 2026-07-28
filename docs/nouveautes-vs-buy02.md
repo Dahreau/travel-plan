@@ -4,6 +4,32 @@
 
 Ce fichier réunit, branche après branche, tout ce qui est vraiment nouveau par rapport à buy-02 — pour réviser vite avant l'audit sans rouvrir chaque page de doc.
 
+## CI/CD (`chore/setup-jenkins`)
+
+buy-02 avait déjà Jenkins + SonarQube (l'énoncé buy-02 l'imposait) — donc pas nouveau en soi. Ce qui change ici :
+
+| Notion | buy-02 | Ici |
+|---|---|---|
+| Nombre de jobs/pipelines | une seule app, un seul job Jenkins | **5 microservices indépendants**, chacun buildé/scanné séparément dans le même pipeline |
+| Exécution des builds | séquentielle (une seule app à la fois) | **en parallèle** (`parallel {}`) — builder plusieurs services ne coûte pas plus de temps qu'un seul |
+| Quality Gate | probablement un seul projet SonarQube à vérifier | **un Quality Gate par service** (`travel-plan-auth-service`, `travel-plan-user-service`, ...), chacun avec son propre statut pass/fail |
+| Blocage sur le Quality Gate | probablement le step Jenkins `waitForQualityGate` (dépend d'un webhook SonarQube → Jenkins) | **le scanner Maven lui-même** (`-Dsonar.qualitygate.wait=true`) sonde l'API SonarQube en boucle — pas de dépendance à un webhook, et pas de risque de confondre le rapport de deux services scannés en parallèle |
+
+**Pourquoi le blocage a changé de mécanisme** (le point le plus subtil) : le step Jenkins `waitForQualityGate` cherche un fichier `report-task.txt` dans tout le workspace — avec 5 services scannés en parallèle, il en trouve plusieurs et n'en garde arbitrairement qu'un seul, donc les 4 autres services ne sont jamais vraiment vérifiés malgré un statut Jenkins vert. Faire porter le blocage par le process Maven de chaque service (qui reçoit son propre ID de tâche directement dans sa réponse HTTP, sans jamais lire de fichier partagé) élimine ce risque de confusion entre services.
+
+## Infra applicative (`chore/setup-app-infra`)
+
+Rien de tout ça n'existait sur buy-02 (pas de Docker Compose multi-conteneurs, pas de secret manager, pas de traçage distribué) :
+
+| Notion | buy-02 | Ici |
+|---|---|---|
+| Bases de données | probablement une seule base, accès direct | **Postgres** (une instance, une base par service) + **Neo4j** (pour `travel-service`), tout en conteneurs Docker Compose |
+| Secrets (mots de passe, tokens) | en dur / variables d'env simples | **HashiCorp Vault** (mode dev), chaque service authentifié via sa propre identité AppRole |
+| Traçage d'une requête | pas de notion équivalente | **Zipkin** — chaque service instrumenté envoie ses traces, consultables dans une UI dédiée |
+| Isolation entre services | probablement un seul user DB partagé | un **user Postgres dédié par service**, qui ne peut pas lire les bases des autres |
+
+**Vault en mode dev, pas en mode prod** (le point le plus nouveau) : un vrai déploiement Vault demande du stockage persistant et un déverrouillage (unseal) manuel — inutile tant qu'on développe en local. Le mode dev donne les mêmes mécanismes d'authentification/policies qu'un vrai Vault (AppRole, policies par service), seuls le stockage (mémoire, tout est perdu au redémarrage) et l'unseal (automatique) diffèrent. À retenir pour l'audit : ce n'est pas un raccourci de sécurité, c'est un choix explicite pour l'environnement de dev — le durcissement (stockage persistant, unseal manuel/Shamir) est prévu pour l'étape déploiement.
+
 ## auth-service (`feat/auth-service-jwt`)
 
 | Notion | buy-02 | Ici |
@@ -25,3 +51,14 @@ Ce fichier réunit, branche après branche, tout ce qui est vraiment nouveau par
 | Contrôle d'accès | probablement un seul niveau "connecté" | `hasRole("ADMIN")` explicite sur toutes les routes, pas juste "authentifié" |
 
 **Cascade en deux mots** (concept le plus nouveau) : supprimer un `User` supprime automatiquement son `Address` associée, sans code applicatif dédié ni requête séparée. Démontré par un test (`UserRepositoryTest.deletingUserCascadesToAddress`) qui sauvegarde un `User` + `Address`, supprime le `User`, puis vérifie que l'`Address` a disparu de la base. À retenir pour l'audit : la cascade est vérifiée aux deux niveaux (base ET JPA), pas seulement l'un ou l'autre.
+
+## api-gateway (`feat/api-gateway-routing`)
+
+| Notion | buy-02 | Ici |
+|---|---|---|
+| Point d'entrée unique | probablement chaque service exposé directement | **API Gateway** (`spring-cloud-starter-gateway-server-webmvc`) : un seul point d'entrée, aucun service backend exposé directement au client |
+| Répartition de charge | — (pas de notion équivalente, un seul backend) | **load balancing par nom logique de service** (`lb("auth-service")`), résolu via une liste d'instances configurable — ajouter une replica ne change aucune ligne de code |
+| Vérification des tokens | un seul endroit qui vérifie tout | **défense en profondeur** : le gateway rejette tôt (authentification, token valide ou pas), chaque service re-vérifie en plus (autorisation, quel rôle a le droit de faire quoi) |
+| Traçage d'une requête à travers plusieurs services | probablement un seul service, pas de notion de trace distribuée | **Zipkin** : chaque service (`auth-service`, `user-service`, `api-gateway`) envoie ses spans, une requête qui traverse gateway → service est visible comme une seule trace |
+
+**Load balancing "sans registry" en deux mots** (concept le plus nouveau) : d'habitude le load balancing suppose un service de découverte (Eureka, Consul) où chaque instance s'enregistre/se désenregistre dynamiquement. Ici, `SimpleDiscoveryClient` (Spring Cloud Commons) donne le même mécanisme de résolution par nom (`lb://auth-service` → une des instances déclarées) à partir d'une simple liste dans `application.properties` — sans registry à faire tourner. À retenir pour l'audit : la haute disponibilité (plusieurs instances, bascule automatique) fonctionne déjà, la seule chose qui manque pour un vrai environnement multi-instances est de lancer réellement plusieurs process par service.
