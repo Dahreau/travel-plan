@@ -26,4 +26,5 @@ create_db_and_user() {
 
 create_db_and_user "auth_db" "auth_user" "$AUTH_DB_PASSWORD"
 create_db_and_user "user_db" "user_user" "$USER_DB_PASSWORD"
+create_db_and_user "travel_db" "travel_user" "$TRAVEL_DB_PASSWORD"
 create_db_and_user "payment_db" "payment_user" "$PAYMENT_DB_PASSWORD"

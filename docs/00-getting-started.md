@@ -23,8 +23,9 @@ Chaque script crée son `.env` depuis `.env.example` s'il n'existe pas encore
 (et s'arrête là, le temps que tu mettes de vrais mots de passe), sinon lance
 directement `docker compose up -d --build`. Rejouable sans risque.
 
-Les microservices eux-mêmes ne sont pas encore branchés sur ces briques (voir
-`02-app-infra.md`).
+`api-gateway`, `auth-service`, `user-service` et `travel-service` sont
+maintenant branchés sur ces briques (Postgres/Neo4j, Vault, Zipkin) — voir
+`02-app-infra.md`. `payment-service` reste à construire.
 
 ## Sommaire de la doc (au fur et à mesure des branches)
 
@@ -34,6 +35,7 @@ Les microservices eux-mêmes ne sont pas encore branchés sur ces briques (voir
 - [`03-auth-service.md`](03-auth-service.md) — JWT, RBAC, secret Vault partagé (branche `feat/auth-service-jwt`).
 - [`04-user-service.md`](04-user-service.md) — CRUD utilisateurs, cascade `User`/`Address` (branche `feat/user-service-crud`).
 - [`05-api-gateway.md`](05-api-gateway.md) — routage, JWT au périmètre, load balancing (branche `feat/api-gateway-routing`).
+- [`06-travel-service.md`](06-travel-service.md) — voyages/destinations, cascade Postgres + Neo4j (branche `feat/travel-service-crud`).
 - [`nouveautes-vs-buy02.md`](nouveautes-vs-buy02.md) — tout ce qui est vraiment nouveau par rapport à buy-02, mis à jour à chaque branche.
 
 Chaque nouvelle page prend le numéro suivant au moment où sa branche est

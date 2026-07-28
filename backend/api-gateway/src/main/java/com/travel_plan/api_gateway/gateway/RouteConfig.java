@@ -15,6 +15,7 @@ public class RouteConfig {
 
     private static final String AUTH_SERVICE = "auth-service";
     private static final String USER_SERVICE = "user-service";
+    private static final String TRAVEL_SERVICE = "travel-service";
 
     @Bean
     public RouterFunction<ServerResponse> authServiceRoutes(JwtGatewayFilterFunction jwtFilter) {
@@ -37,6 +38,15 @@ public class RouteConfig {
         return route(USER_SERVICE)
                 .route(path("/api/users/**"), http())
                 .filter(lb(USER_SERVICE))
+                .filter(jwtFilter)
+                .build();
+    }
+
+    @Bean
+    public RouterFunction<ServerResponse> travelServiceRoutes(JwtGatewayFilterFunction jwtFilter) {
+        return route(TRAVEL_SERVICE)
+                .route(path("/api/travels/**"), http())
+                .filter(lb(TRAVEL_SERVICE))
                 .filter(jwtFilter)
                 .build();
     }
