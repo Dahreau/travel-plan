@@ -28,8 +28,8 @@ public class JwtService {
         return Jwts.builder()
                 .subject(username)
                 .claim(ROLE_CLAIM, role)
-                .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plus(expirationMinutes, ChronoUnit.MINUTES)))
+                .issuedAt(Date.from(now)) // NOSONAR java:S2143 - jjwt 0.12.x n'expose que des overloads java.util.Date, pas java.time.Instant
+                .expiration(Date.from(now.plus(expirationMinutes, ChronoUnit.MINUTES))) // NOSONAR java:S2143 - meme contrainte que ci-dessus
                 .signWith(signingKey)
                 .compact();
     }

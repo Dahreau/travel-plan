@@ -1,6 +1,7 @@
 package com.travel_plan.auth_service.web;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -14,7 +15,6 @@ import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -30,9 +30,9 @@ class AuthControllerTest {
 
     @BeforeEach
     void setUp() {
-        adminRepository = Mockito.mock(AdminRepository.class);
-        passwordEncoder = Mockito.mock(PasswordEncoder.class);
-        jwtService = Mockito.mock(JwtService.class);
+        adminRepository = mock(AdminRepository.class);
+        passwordEncoder = mock(PasswordEncoder.class);
+        jwtService = mock(JwtService.class);
 
         AuthController controller = new AuthController(adminRepository, passwordEncoder, jwtService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)

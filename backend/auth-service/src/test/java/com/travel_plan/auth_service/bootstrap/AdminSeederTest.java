@@ -1,6 +1,7 @@
 package com.travel_plan.auth_service.bootstrap;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -9,7 +10,6 @@ import com.travel_plan.auth_service.domain.Admin;
 import com.travel_plan.auth_service.repository.AdminRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 class AdminSeederTest {
@@ -20,8 +20,8 @@ class AdminSeederTest {
 
     @BeforeEach
     void setUp() {
-        adminRepository = Mockito.mock(AdminRepository.class);
-        passwordEncoder = Mockito.mock(PasswordEncoder.class);
+        adminRepository = mock(AdminRepository.class);
+        passwordEncoder = mock(PasswordEncoder.class);
         seeder = new AdminSeeder(adminRepository, passwordEncoder, "admin", "changeme");
     }
 
