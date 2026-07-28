@@ -25,7 +25,7 @@ Postgres `localhost:5432` · Neo4j Browser http://localhost:7474 · Vault http:/
 | `vault-init` | `hashicorp/vault:2.0` | conteneur one-shot : active AppRole, crée une policy + un role par microservice (`infra/vault/policies/*.hcl`), chacun limité en lecture à `secret/data/<service>/*` |
 | `zipkin` | `openzipkin/zipkin:3` | collecteur de traces, stockage mémoire |
 
-Rien ne connecte encore les microservices à ces briques (pas de `spring.datasource.url`, pas de driver Neo4j, pas de client Vault) — ça viendra avec le vrai code de chaque service. Cette étape prouve juste que l'infra démarre correctement, de façon reproductible pour n'importe quel coéquipier qui clone le repo.
+`auth-service`, `user-service` et `api-gateway` sont maintenant branchés sur Vault (AppRole) et Zipkin (traces). `travel-service`/`payment-service` restent à construire — Neo4j et la 3ᵉ base Postgres (`payment_db`) attendent leur code.
 
 ## Se connecter aux briques (pour développer une feature)
 
@@ -79,15 +79,25 @@ flowchart LR
     Vault[Vault - dev mode] --> VaultInit[vault-init<br/>AppRole + policies]
     Zipkin[Zipkin]
 
-    AuthS[auth-service] -.futur.-> PG
-    UserS[user-service] -.futur.-> PG
+    Gateway[api-gateway] -.futur.-> AuthS
+    Gateway -.futur.-> UserS
+    AuthS[auth-service] --> PG
+    UserS[user-service] --> PG
     PayS[payment-service] -.futur.-> PG
     TravelS[travel-service] -.futur.-> NEO
-    AuthS -.futur.-> Vault
-    UserS -.futur.-> Vault
+    AuthS --> Vault
+    UserS --> Vault
+    Gateway --> Vault
     PayS -.futur.-> Vault
     TravelS -.futur.-> Vault
+    AuthS --> Zipkin
+    UserS --> Zipkin
+    Gateway --> Zipkin
 ```
+
+## Nouveau par rapport à buy-02
+
+Voir [`nouveautes-vs-buy02.md`](nouveautes-vs-buy02.md#infra-applicative-choresetup-app-infra) (Vault, Zipkin, stack Docker Compose multi-conteneurs — rien de tout ça n'existait sur buy-02).
 
 ## Pourquoi ces choix
 

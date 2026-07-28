@@ -22,7 +22,7 @@ VAULT_ADDR=http://localhost:8200 VAULT_ROLE_ID=<role_id> VAULT_SECRET_ID=<secret
 ./mvnw spring-boot:run
 ```
 
-Toutes les routes exigent un JWT `ADMIN` émis par `auth-service` (`Authorization: Bearer <token>`) — récupère-le via `POST /api/auth/login` d'abord.
+Le service écoute sur `:8082` (voir [`05-api-gateway.md`](05-api-gateway.md) pour y accéder via le gateway plutôt qu'en direct). Toutes les routes exigent un JWT `ADMIN` émis par `auth-service` (`Authorization: Bearer <token>`) — récupère-le via `POST /api/auth/login` d'abord.
 
 ## Endpoints
 

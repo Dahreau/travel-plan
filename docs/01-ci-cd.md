@@ -46,7 +46,7 @@ Alternative plus stricte : un *fine-grained token* scopé au seul repo `travel-p
 2. Colle-le dans `SONAR_TOKEN` de `infra/ci/.env`, relance `docker compose up -d`
 3. SonarQube → Administration → Configuration → Webhooks → ajoute `http://jenkins:8080/sonarqube-webhook/`
 
-Sans ce webhook, le stage `Quality Gate` attend indéfiniment (il attend une notification, pas un sondage en boucle).
+**Mise à jour** : ce webhook n'est plus strictement nécessaire. Le blocage sur le Quality Gate se fait maintenant côté scanner Maven (`-Dsonar.qualitygate.wait=true`, qui sonde directement l'API SonarQube en boucle), plus via un step Jenkins `waitForQualityGate` qui, lui, dépendait du webhook. Le garder configuré ne fait pas de mal, mais si tu repars de zéro tu peux sauter cette étape.
 
 ### 3. Scan périodique
 
@@ -59,12 +59,11 @@ Jenkins rescanne le repo tout seul (nouvelles branches/commits), sans exposer au
 ```mermaid
 flowchart LR
     Dev[Push / PR sur GitHub] -->|scan périodique, 1 min| Jenkins
-    Jenkins -->|git diff| Detect[Détection des services modifiés]
-    Detect --> Build[Build + tests unitaires<br/>en parallèle, un par service modifié]
-    Build --> Sonar[Analyse SonarQube]
-    Sonar --> Gate[Quality Gate]
-    Gate -->|OK| Status[Statut renvoyé sur la PR GitHub]
-    Gate -->|main uniquement| Deploy[Deploy — TODO, pas encore construit]
+    Jenkins --> Infra[Validate infra<br/>syntaxe des scripts .sh]
+    Jenkins --> Build[Build + tests unitaires<br/>en parallèle, tous les services de SERVICES]
+    Build --> Sonar[Analyse SonarQube + Quality Gate<br/>en parallèle, un gate par service]
+    Sonar -->|OK| Status[Statut renvoyé sur la PR GitHub]
+    Sonar -->|main uniquement| Deploy[Deploy — TODO, pas encore construit]
 ```
 
 ## Ce qui est construit dans `infra/ci/`
@@ -80,20 +79,20 @@ flowchart LR
 | `agent any` | tourne sur Jenkins lui-même, pas de machine de build séparée |
 | `disableConcurrentBuilds()` | empêche deux builds du même job en parallèle |
 | `checkout scm` | récupère la bonne révision (branche/PR) sans URL en dur — le même Jenkinsfile sert à tout le monde |
-| `env.CHANGED_SERVICES` | liste des services touchés, calculée dans "Detect changed services", lue par les stages suivants |
-| `env.INFRA_CHANGED` | même principe, pour tout ce qui n'est pas du Java (`docker-compose.yml`, `infra/`, le `Jenkinsfile` lui-même) |
-| `sh(script: ..., returnStdout: true).trim()` | récupère la sortie shell comme texte manipulable en Groovy |
-| `services.collectEntries { ... }` + `parallel(...)` | construit dynamiquement une branche parallèle par service touché — ajouter un 6ᵉ service ne demande qu'un dossier dans `backend/`, jamais de toucher au Jenkinsfile |
-| `buildService`/`sonarService` | factorisent l'appel Maven (évite de le dupliquer 5 fois) ; lancent `./mvnw` **directement sur l'agent Jenkins**, pas dans un conteneur jetable |
+| `SERVICES` | liste en dur des services **réellement implémentés** (`api-gateway`, `auth-service`, `user-service` aujourd'hui) — un service rejoint la liste avec sa propre PR d'implémentation, pas avant que son code n'existe |
+| `services.collectEntries { ... }` + `parallel(...)` | construit une branche parallèle par service de `SERVICES` |
+| `buildService`/`sonarService` | factorisent l'appel Maven (évite de le dupliquer) ; lancent `./mvnw` **directement sur l'agent Jenkins**, pas dans un conteneur jetable |
 | `withSonarQubeEnv('sonarqube')` | injecte l'URL/le token SonarQube sans les coder en dur |
-| `waitForQualityGate abortPipeline: true` | met le build en pause jusqu'à la notification SonarQube (webhook), échoue si le quality gate ne passe pas |
-| `when { expression {...} }` / `when { branch 'main' }` | conditionne l'exécution d'un stage à ce build précis |
+| `-Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300` | propriété passée directement au scanner Maven : il sonde lui-même l'API SonarQube et fait échouer le build si le Quality Gate ne passe pas — pas de step Jenkins séparé, pas de dépendance au webhook |
+| `when { branch 'main' }` | conditionne l'exécution de `Deploy` à ce build précis |
 
-Trois points qui méritent plus qu'une ligne dans le tableau :
+Un point qui mérite plus qu'une ligne dans le tableau :
 
-- **`ls -d backend/*/ \| xargs -n1 basename`, pas `ls backend`** — un simple `ls` liste aussi les fichiers (un `Dockerfile` égaré a un jour traîné dans `backend/`, Jenkins a essayé de le traiter comme un 6ᵉ service et de faire `cd backend/Dockerfile`). Filtrer sur les dossiers rend la détection robuste à ce genre d'oubli.
 - **`org.sonarsource.scanner.maven:sonar-maven-plugin:sonar`, pas le raccourci `sonar:sonar`** — Maven ne résout les raccourcis de plugin que pour une liste de groupes connus par défaut, qui n'inclut pas SonarQube. Le raccourci seul échoue (`No plugin found for prefix 'sonar'`) sauf à modifier un `settings.xml` global sur chaque machine — les coordonnées complètes évitent ça proprement.
-- **Version dynamique plutôt que statique** — une version antérieure déclarait les 5 services en dur (5 blocs `stage` répétés). Le retour à la version dynamique n'était pas lié à un souci d'affichage Jenkins (fausse piste, corrigée depuis) : elle reste simplement plus simple à maintenir.
+
+## Nouveau par rapport à buy-02
+
+Voir [`nouveautes-vs-buy02.md`](nouveautes-vs-buy02.md#cicd-choresetup-jenkins) (buy-02 avait déjà Jenkins + SonarQube — ce qui change ici, c'est le multi-microservices).
 
 ## Ce qui reste à faire (hors scope de cette étape)
 
@@ -108,15 +107,13 @@ L'énoncé impose qu'une PR passe par Jenkins avant de pouvoir être mergée. Ce
 ### Pourquoi un scan périodique plutôt qu'un webhook
 Un webhook demanderait que Jenkins soit joignable depuis internet — pas reproductible pour un coéquipier qui héberge sa propre instance. Le scan toutes les 1 minute ne demande aucune exposition réseau et reste largement assez réactif (très loin de la limite API GitHub, 5000 req/h).
 
-### Pourquoi ne builder que les services modifiés
-Les 5 microservices sont indépendants (pas de POM parent) : modifier `payment-service` n'a aucune raison de redéclencher les 4 autres. Le calcul se fait via `git diff` entre la base de la PR et `HEAD` (ou `HEAD~1` hors PR).
+### Pourquoi on build TOUS les services de `SERVICES`, à chaque fois
+Une version antérieure ne buildait/scannait que les services modifiés (détectés via `git diff`), pour gagner du temps de build. En pratique, cette détection a produit plus d'angles morts réels en une session (`HEAD~1` vs diff cumulé de PR, `INFRA_CHANGED` qui ne forçait un recheck complet que si `Jenkinsfile` changeait, aucun moyen de forcer un recheck complet à la demande) que le temps qu'elle faisait gagner : à 2-3 services actifs, les builder tous en parallèle coûte à peu près le même temps que d'en builder un seul (`parallel {}` les lance simultanément). Plus simple à défendre à l'oral, zéro angle mort à expliquer.
 
-- **Exception : le `Jenkinsfile` lui-même** — s'il est modifié, tous les services sont testés, pas seulement ceux touchés. Sinon un bug introduit dans le pipeline passerait inaperçu tant qu'aucun code ne change.
-- **`HEAD~1` n'affaiblit pas la protection de `main`** — tant qu'une PR est ouverte, chaque commit est comparé à `origin/main` cumulé sur toute la PR, pas juste au commit précédent. `HEAD~1` ne sert qu'aux builds directs sur `main` après un merge.
-- **Règle d'équipe** : ouvrir la PR en *Draft* dès le premier push, même inachevée — ça bascule tout de suite en comparaison cumulée contre `main`, un service cassé reste visible jusqu'à correction.
+Ça ne veut pas dire que tout `backend/*/` est buildé : `SERVICES` ne liste que les services qui ont du vrai code (voir tableau plus haut) — un dossier Spring Initializr vide (coquille sans logique) n'y entre pas tant que sa PR d'implémentation n'est pas ouverte.
 
 ### Pourquoi valider l'infra dans Jenkins
-Une PR qui ne touche que `docker-compose.yml`/`infra/` a `CHANGED_SERVICES` vide → tout est sauté → check vert qui n'a rien vérifié. `Validate infra` comble ce trou avec `bash -n` sur chaque script `.sh` (repère les erreurs de syntaxe sans rien exécuter).
+`Validate infra` tourne à chaque push, sans condition — cohérent avec la décision ci-dessus de ne plus conditionner l'exécution des stages sur ce qui a changé. `bash -n` sur chaque script `.sh` repère les erreurs de syntaxe sans rien exécuter.
 
 On a testé une version plus poussée (`docker compose up --wait` sur toute la stack, dans un projet isolé) — elle a réellement attrapé plusieurs bugs, mais demandait que Jenkins pilote le vrai daemon Docker (proxy dédié, permissions à ajuster une par une). Le coût de maintenance dépassait le bénéfice pour un projet testé à la main par un seul développeur avant chaque merge — retour à la syntaxe seule.
 
