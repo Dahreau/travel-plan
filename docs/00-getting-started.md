@@ -31,6 +31,8 @@ Les microservices eux-mêmes ne sont pas encore branchés sur ces briques (voir
 - [`00-getting-started.md`](00-getting-started.md) — cette page.
 - [`01-ci-cd.md`](01-ci-cd.md) — Jenkins, SonarQube, pipeline (branche `chore/setup-jenkins`).
 - [`02-app-infra.md`](02-app-infra.md) — Postgres, Neo4j, Vault, Zipkin (branche `chore/setup-app-infra`).
+- [`03-auth-service.md`](03-auth-service.md) — JWT, RBAC, secret Vault partagé (branche `feat/auth-service-jwt`).
+- [`nouveautes-vs-buy02.md`](nouveautes-vs-buy02.md) — tout ce qui est vraiment nouveau par rapport à buy-02, mis à jour à chaque branche.
 
 Chaque nouvelle page prend le numéro suivant au moment où sa branche est
 construite — pas de trous ni de numéros réservés à l'avance, pour éviter le

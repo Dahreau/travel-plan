@@ -1,10 +1,10 @@
 def buildService(svc) {
-    sh "cd backend/${svc} && ./mvnw -B clean verify"
+    sh "cd backend/${svc} && ./mvnw -B clean verify -DforkCount=1 -DreuseForks=false"
 }
 
 def sonarService(svc) {
     withSonarQubeEnv('sonarqube') {
-        sh "cd backend/${svc} && ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=travel-plan-${svc}"
+        sh "cd backend/${svc} && ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=travel-plan-${svc} -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300"
     }
 }
 
@@ -76,7 +76,7 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('SonarQube Analysis & Quality Gate') {
             when { expression { env.CHANGED_SERVICES } }
             steps {
                 script {
@@ -84,15 +84,6 @@ pipeline {
                     parallel(services.collectEntries { svc ->
                         [svc, { sonarService(svc) }]
                     })
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            when { expression { env.CHANGED_SERVICES } }
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
                 }
             }
         }
