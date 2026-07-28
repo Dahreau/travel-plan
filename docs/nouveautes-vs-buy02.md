@@ -19,14 +19,14 @@ buy-02 avait déjà Jenkins + SonarQube (l'énoncé buy-02 l'imposait) — donc 
 
 ## Infra applicative (`chore/setup-app-infra`)
 
-Rien de tout ça n'existait sur buy-02 (pas de Docker Compose multi-conteneurs, pas de secret manager, pas de traçage distribué) :
+Secret manager et traçage distribué sont réellement nouveaux. L'isolation des bases, elle, ne l'est **pas** — buy-02 avait déjà des bases MongoDB isolées par service (corrigé après une première version de cette page qui supposait le contraire à tort) :
 
 | Notion | buy-02 | Ici |
 |---|---|---|
-| Bases de données | probablement une seule base, accès direct | **Postgres** (une instance, une base par service) + **Neo4j** (pour `travel-service`), tout en conteneurs Docker Compose |
+| Bases de données | MongoDB, isolées par service | **Postgres** (une instance, une base par service) + **Neo4j** (pour `travel-service`) — changement de techno (relationnel + graphe plutôt que documents), pas d'isolation en plus |
+| Isolation entre services | déjà le cas (bases Mongo séparées) | même principe, transposé à Postgres : un user dédié par service, qui ne peut pas lire les bases des autres |
 | Secrets (mots de passe, tokens) | en dur / variables d'env simples | **HashiCorp Vault** (mode dev), chaque service authentifié via sa propre identité AppRole |
 | Traçage d'une requête | pas de notion équivalente | **Zipkin** — chaque service instrumenté envoie ses traces, consultables dans une UI dédiée |
-| Isolation entre services | probablement un seul user DB partagé | un **user Postgres dédié par service**, qui ne peut pas lire les bases des autres |
 
 **Vault en mode dev, pas en mode prod** (le point le plus nouveau) : un vrai déploiement Vault demande du stockage persistant et un déverrouillage (unseal) manuel — inutile tant qu'on développe en local. Le mode dev donne les mêmes mécanismes d'authentification/policies qu'un vrai Vault (AppRole, policies par service), seuls le stockage (mémoire, tout est perdu au redémarrage) et l'unseal (automatique) diffèrent. À retenir pour l'audit : ce n'est pas un raccourci de sécurité, c'est un choix explicite pour l'environnement de dev — le durcissement (stockage persistant, unseal manuel/Shamir) est prévu pour l'étape déploiement.
 

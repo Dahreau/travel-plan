@@ -13,16 +13,19 @@ import org.springframework.web.servlet.function.ServerResponse;
 @Configuration
 public class RouteConfig {
 
+    private static final String AUTH_SERVICE = "auth-service";
+    private static final String USER_SERVICE = "user-service";
+
     @Bean
     public RouterFunction<ServerResponse> authServiceRoutes(JwtGatewayFilterFunction jwtFilter) {
         RouterFunction<ServerResponse> login = route("auth-service-login")
                 .POST("/api/auth/login", http())
-                .filter(lb("auth-service"))
+                .filter(lb(AUTH_SERVICE))
                 .build();
 
-        RouterFunction<ServerResponse> protectedRoutes = route("auth-service")
+        RouterFunction<ServerResponse> protectedRoutes = route(AUTH_SERVICE)
                 .route(path("/api/auth/**"), http())
-                .filter(lb("auth-service"))
+                .filter(lb(AUTH_SERVICE))
                 .filter(jwtFilter)
                 .build();
 
@@ -31,9 +34,9 @@ public class RouteConfig {
 
     @Bean
     public RouterFunction<ServerResponse> userServiceRoutes(JwtGatewayFilterFunction jwtFilter) {
-        return route("user-service")
+        return route(USER_SERVICE)
                 .route(path("/api/users/**"), http())
-                .filter(lb("user-service"))
+                .filter(lb(USER_SERVICE))
                 .filter(jwtFilter)
                 .build();
     }
