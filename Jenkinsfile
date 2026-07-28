@@ -4,7 +4,7 @@ def buildService(svc) {
 
 def sonarService(svc) {
     withSonarQubeEnv('sonarqube') {
-        sh "cd backend/${svc} && ./mvnw -B sonar:sonar -Dsonar.projectKey=travel-plan-${svc}"
+        sh "cd backend/${svc} && ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=travel-plan-${svc}"
     }
 }
 
