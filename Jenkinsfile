@@ -1,5 +1,5 @@
-def SERVICES = ['api-gateway', 'auth-service', 'user-service']
-// travel-service, payment-service rejoignent cette liste avec leur propre PR d'implementation
+def SERVICES = ['api-gateway', 'auth-service', 'user-service', 'travel-service']
+// payment-service rejoint cette liste avec sa propre PR d'implementation
 
 def buildService(svc) {
     sh "cd backend/${svc} && ./mvnw -B clean verify -DforkCount=1 -DreuseForks=false"

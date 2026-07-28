@@ -19,13 +19,13 @@ Postgres `localhost:5432` · Neo4j Browser http://localhost:7474 · Vault http:/
 
 | Service | Image | Rôle |
 |---|---|---|
-| `postgres` | `postgres:18-alpine` | 1 instance, 3 bases séparées créées au premier démarrage par `infra/postgres/init/init-databases.sh` (`auth_db`, `user_db`, `payment_db`), un user dédié par base, sans accès aux bases des autres services |
+| `postgres` | `postgres:18-alpine` | 1 instance, 4 bases séparées créées au premier démarrage par `infra/postgres/init/init-databases.sh` (`auth_db`, `user_db`, `travel_db`, `payment_db`), un user dédié par base, sans accès aux bases des autres services |
 | `neo4j` | `neo4j:5.26` (Community, LTS 5.x) | instance unique pour `travel-service` |
 | `vault` | `hashicorp/vault:2.0` | mode **dev** (auto-unseal, stockage mémoire) — voir "Pourquoi" plus bas |
 | `vault-init` | `hashicorp/vault:2.0` | conteneur one-shot : active AppRole, crée une policy + un role par microservice (`infra/vault/policies/*.hcl`), chacun limité en lecture à `secret/data/<service>/*` |
 | `zipkin` | `openzipkin/zipkin:3` | collecteur de traces, stockage mémoire |
 
-`auth-service`, `user-service` et `api-gateway` sont maintenant branchés sur Vault (AppRole) et Zipkin (traces). `travel-service`/`payment-service` restent à construire — Neo4j et la 3ᵉ base Postgres (`payment_db`) attendent leur code.
+`auth-service`, `user-service`, `api-gateway` et `travel-service` sont maintenant branchés sur Vault (AppRole) et Zipkin (traces). `travel-service` est aussi le premier à écrire dans Neo4j (graphe de destinations) en plus de Postgres. `payment-service` reste à construire — la 4ᵉ base Postgres (`payment_db`) attend son code.
 
 ## Se connecter aux briques (pour développer une feature)
 
@@ -79,20 +79,23 @@ flowchart LR
     Vault[Vault - dev mode] --> VaultInit[vault-init<br/>AppRole + policies]
     Zipkin[Zipkin]
 
-    Gateway[api-gateway] -.futur.-> AuthS
-    Gateway -.futur.-> UserS
+    Gateway[api-gateway] --> AuthS
+    Gateway --> UserS
+    Gateway --> TravelS
     AuthS[auth-service] --> PG
     UserS[user-service] --> PG
     PayS[payment-service] -.futur.-> PG
-    TravelS[travel-service] -.futur.-> NEO
+    TravelS[travel-service] --> PG
+    TravelS --> NEO
     AuthS --> Vault
     UserS --> Vault
     Gateway --> Vault
+    TravelS --> Vault
     PayS -.futur.-> Vault
-    TravelS -.futur.-> Vault
     AuthS --> Zipkin
     UserS --> Zipkin
     Gateway --> Zipkin
+    TravelS --> Zipkin
 ```
 
 ## Nouveau par rapport à buy-02

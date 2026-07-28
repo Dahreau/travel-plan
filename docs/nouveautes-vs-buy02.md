@@ -62,3 +62,13 @@ Secret manager et traçage distribué sont réellement nouveaux. L'isolation des
 | Traçage d'une requête à travers plusieurs services | probablement un seul service, pas de notion de trace distribuée | **Zipkin** : chaque service (`auth-service`, `user-service`, `api-gateway`) envoie ses spans, une requête qui traverse gateway → service est visible comme une seule trace |
 
 **Load balancing "sans registry" en deux mots** (concept le plus nouveau) : d'habitude le load balancing suppose un service de découverte (Eureka, Consul) où chaque instance s'enregistre/se désenregistre dynamiquement. Ici, `SimpleDiscoveryClient` (Spring Cloud Commons) donne le même mécanisme de résolution par nom (`lb://auth-service` → une des instances déclarées) à partir d'une simple liste dans `application.properties` — sans registry à faire tourner. À retenir pour l'audit : la haute disponibilité (plusieurs instances, bascule automatique) fonctionne déjà, la seule chose qui manque pour un vrai environnement multi-instances est de lancer réellement plusieurs process par service.
+
+## travel-service (`feat/travel-service-crud`)
+
+| Notion | buy-02 | Ici |
+|---|---|---|
+| Bases de données | MongoDB seul | **Postgres pour la réservation** (voyage, destinations, activités, hébergement, transport, cascade) **+ Neo4j pour les recommandations** (graphe de destinations enchaînées) — deux systèmes, chacun pour ce qu'il fait le mieux |
+| Cascade delete/update | intra-MongoDB uniquement | intra-Postgres (comme `user-service`) **et** orchestrée entre Postgres et Neo4j par le code applicatif — pas de contrainte native cross-DB, donc la cohérence est un choix explicite du service, pas un mécanisme de base |
+| Traversée de graphe ("quelles destinations vont souvent ensemble") | pas de notion équivalente | requête Cypher à profondeur variable (`ROUTE_TO*1..2`) — ce qu'un JOIN SQL récursif ferait mal et lentement |
+
+**Pourquoi deux bases pour un seul service** (le point le plus nouveau, et celui que l'audit demande explicitement) : il n'existe pas de transaction ACID unique entre Postgres et Neo4j sans 2PC/saga (hors scope ici). `TravelService` écrit d'abord dans Postgres (source de vérité du voyage), puis appelle `TravelGraphSyncService` pour mettre à jour le graphe Neo4j (nœuds `Place` partagés entre tous les voyages, reliés par `ROUTE_TO` avec un compteur `tripCount`). Supprimer un voyage décrémente ce compteur avant de supprimer les lignes Postgres (cascade native) ; si le compteur tombe à zéro, la relation Neo4j disparaît aussi. À retenir pour l'audit : c'est une cohérence *orchestrée par le code*, explicitement présentée comme telle — pas une prétention à une transaction distribuée qui n'existe pas.
