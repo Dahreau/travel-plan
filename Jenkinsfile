@@ -4,12 +4,7 @@ def buildService(svc) {
 
 def sonarService(svc) {
     withSonarQubeEnv('sonarqube') {
-        sh "cd backend/${svc} && ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=travel-plan-${svc}"
-    }
-    dir("backend/${svc}") {
-        timeout(time: 5, unit: 'MINUTES') {
-            waitForQualityGate abortPipeline: true
-        }
+        sh "cd backend/${svc} && ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=travel-plan-${svc} -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300"
     }
 }
 
