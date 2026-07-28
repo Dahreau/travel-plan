@@ -33,7 +33,7 @@ pipeline {
                 script {
                     def baseRef = env.CHANGE_TARGET ? "origin/${env.CHANGE_TARGET}" : 'HEAD~1'
                     def changedFiles = sh(script: "git diff --name-only ${baseRef} HEAD", returnStdout: true).trim()
-                    def allServices = sh(script: 'ls backend', returnStdout: true).trim().split('\n') as List
+                    def allServices = sh(script: 'ls -d backend/*/ | xargs -n1 basename', returnStdout: true).trim().split('\n') as List
                     def jenkinsfileChanged = changedFiles.contains('Jenkinsfile')
 
                     env.CHANGED_SERVICES = jenkinsfileChanged
