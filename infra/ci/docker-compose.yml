@@ -17,7 +17,6 @@ services:
       - jenkins_home:/var/jenkins_home
       - ./jenkins/casc.yaml:/var/jenkins_home/casc.yaml:ro
       - maven_repo:/var/jenkins_home/.m2
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - ci
 
