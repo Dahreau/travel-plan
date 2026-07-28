@@ -1,5 +1,5 @@
 def buildService(svc) {
-    sh "cd backend/${svc} && ./mvnw -B clean verify"
+    sh "cd backend/${svc} && ./mvnw -B clean verify -DforkCount=1 -DreuseForks=false"
 }
 
 def sonarService(svc) {
