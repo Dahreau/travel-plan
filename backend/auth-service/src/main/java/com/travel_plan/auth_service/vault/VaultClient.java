@@ -1,6 +1,7 @@
 package com.travel_plan.auth_service.vault;
 
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -13,11 +14,16 @@ public class VaultClient {
     private final String roleId;
     private final String secretId;
 
+    @Autowired
     public VaultClient(
             @Value("${app.vault.addr}") String vaultAddr,
             @Value("${app.vault.role-id}") String roleId,
             @Value("${app.vault.secret-id}") String secretId) {
-        this.restClient = RestClient.create();
+        this(vaultAddr, roleId, secretId, RestClient.create());
+    }
+
+    VaultClient(String vaultAddr, String roleId, String secretId, RestClient restClient) {
+        this.restClient = restClient;
         this.vaultAddr = vaultAddr;
         this.roleId = roleId;
         this.secretId = secretId;
