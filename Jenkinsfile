@@ -15,8 +15,14 @@ def buildFrontend() {
         cd frontend
         npm install
         npm run build
-        npx ng test --watch=false
+        npx ng test --watch=false --coverage --coverage-reporters=lcov
     '''
+}
+
+def sonarFrontend() {
+    withSonarQubeEnv('sonarqube') {
+        sh "cd frontend && npx --yes @sonar/scan -Dsonar.projectKey=travel-plan-frontend -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300"
+    }
 }
 
 pipeline {
@@ -64,9 +70,11 @@ pipeline {
         stage('SonarQube Analysis & Quality Gate') {
             steps {
                 script {
-                    parallel(SERVICES.collectEntries { svc ->
+                    def branches = SERVICES.collectEntries { svc ->
                         [svc, { sonarService(svc) }]
-                    })
+                    }
+                    branches['frontend'] = { sonarFrontend() }
+                    parallel(branches)
                 }
             }
         }
