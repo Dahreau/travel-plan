@@ -9,7 +9,7 @@ ne documente que ce qui existe réellement dans le repo au moment où tu la lis.
 - JDK 21
 - Maven (fourni via le wrapper `mvnw` dans chaque microservice)
 - Docker Desktop (+ Docker Compose)
-- Node.js (version exacte à préciser une fois le projet Angular généré)
+- Node.js 22 (Angular 21 / `frontend/` — détail : `09-admin-dashboard.md`)
 - Ansible (`pip install ansible --break-system-packages`) + la collection `community.docker`, seulement si tu déploies via `ansible/playbooks/site.yml` (détail : `08-ansible-deploy-tls.md`)
 
 ## Ce qui tourne réellement aujourd'hui
@@ -39,6 +39,7 @@ Vault, Zipkin) — voir `02-app-infra.md`.
 - [`06-travel-service.md`](06-travel-service.md) — voyages/destinations, cascade Postgres + Neo4j (branche `feat/travel-service-crud`).
 - [`07-payment-service.md`](07-payment-service.md) — moyens de paiement, paiements Stripe/PayPal (branche `feat/payment-service-crud`).
 - [`08-ansible-deploy-tls.md`](08-ansible-deploy-tls.md) — déploiement automatisé, replicas, TLS via Nginx (branche `chore/ansible-deploy-tls`).
+- [`09-admin-dashboard.md`](09-admin-dashboard.md) — Admin Dashboard Angular (branche `feat/admin-dashboard`).
 - [`nouveautes-vs-buy02.md`](nouveautes-vs-buy02.md) — tout ce qui est vraiment nouveau par rapport à buy-02, mis à jour à chaque branche.
 
 Chaque nouvelle page prend le numéro suivant au moment où sa branche est
