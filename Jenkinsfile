@@ -76,11 +76,12 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh '''
-                    rm -rf /deploy-workspace/*
-                    cp -a "$WORKSPACE"/. /deploy-workspace/
+                    DEPLOY_DIR="$HOST_REPO_PATH/infra/ci/deploy-workspace"
+                    rm -rf "$DEPLOY_DIR"/*
+                    tar --exclude=.git --exclude=node_modules --exclude=target --exclude=dist --exclude=.angular -C "$WORKSPACE" -cf - . | tar -C "$DEPLOY_DIR" -xf -
                     cd ansible
                     ansible-galaxy collection install -r requirements.yml
-                    ansible-playbook -i inventory.ini playbooks/site.yml -e project_dir="$HOST_REPO_PATH/infra/ci/deploy-workspace"
+                    ansible-playbook -i inventory.ini playbooks/site.yml -e project_dir="$DEPLOY_DIR"
                 '''
             }
         }

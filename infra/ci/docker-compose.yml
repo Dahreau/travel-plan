@@ -19,7 +19,7 @@ services:
       - ./jenkins/casc.yaml:/var/jenkins_home/casc.yaml:ro
       - maven_repo:/var/jenkins_home/.m2
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./deploy-workspace:/deploy-workspace
+      - ${HOST_REPO_PATH}/infra/ci/deploy-workspace:${HOST_REPO_PATH}/infra/ci/deploy-workspace
     networks:
       - ci
 
