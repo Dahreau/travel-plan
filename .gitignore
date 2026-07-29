@@ -54,6 +54,6 @@ Thumbs.db
 # CI (Jenkins/SonarQube) — déjà couvert par la règle .env générique ci-dessus
 
 # Certificat TLS auto-signé Nginx (généré par Ansible, jamais commité)
-infra/nginx/certs/*.crt
-infra/nginx/certs/*.key
+# infra/nginx/certs/*.crt
+# infra/nginx/certs/*.key
 !infra/nginx/certs/.gitkeep
