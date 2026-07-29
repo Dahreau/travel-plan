@@ -80,9 +80,12 @@ pipeline {
         }
 
         stage('Deploy') {
-            when { branch 'main' }
             steps {
-                echo 'TODO: build images Docker + ansible-playbook deploy.yml (étape à venir, pas encore construite)'
+                sh '''
+                    cd ansible
+                    ansible-galaxy collection install -r requirements.yml
+                    ansible-playbook -i inventory.ini playbooks/site.yml
+                '''
             }
         }
     }
