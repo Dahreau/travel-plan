@@ -10,6 +10,15 @@ def sonarService(svc) {
     }
 }
 
+def buildFrontend() {
+    sh '''
+        cd frontend
+        npm install
+        npm run build
+        npx ng test --watch=false
+    '''
+}
+
 pipeline {
     agent any
 
@@ -43,9 +52,11 @@ pipeline {
         stage('Build & Test') {
             steps {
                 script {
-                    parallel(SERVICES.collectEntries { svc ->
+                    def branches = SERVICES.collectEntries { svc ->
                         [svc, { buildService(svc) }]
-                    })
+                    }
+                    branches['frontend'] = { buildFrontend() }
+                    parallel(branches)
                 }
             }
         }
