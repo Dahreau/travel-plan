@@ -82,3 +82,14 @@ Secret manager et traçage distribué sont réellement nouveaux. L'isolation des
 | Modification d'un paiement | probablement un `PUT` générique comme les autres entités | **aucun `PUT`/`DELETE`** sur `/api/payments` — un paiement ne se modifie pas, il se rembourse (`POST .../refund`), comme chez un vrai fournisseur de paiement |
 
 **Pourquoi une seule entité "cascade" fait exception** (le point le plus nouveau) : jusqu'ici, chaque suppression en cascade démontrée (`User`/`Address`, `Travel`/`Destination`) l'était parce que l'enfant n'a aucun sens sans le parent. `Payment`/`PaymentMethod` est le contre-exemple volontaire : le paiement doit rester en base même si le moyen de paiement qui l'a produit disparaît (carte expirée retirée, par exemple), donc son FK passe à `NULL` au lieu de cascader — appliqué aux deux niveaux (Flyway et l'annotation Hibernate `@OnDelete(action = OnDeleteAction.SET_NULL)`, pour que le schéma des tests corresponde au schéma réel) et vérifié par un test dédié. À retenir pour l'audit : ce n'est pas un oubli de cascade, c'est la démonstration que la cascade est un choix de modélisation, pas un réflexe systématique.
+
+## Ansible + TLS (`chore/ansible-deploy-tls`)
+
+| Notion | buy-02 | Ici |
+|---|---|---|
+| Déploiement | probablement manuel (lancer chaque service à la main) | **Ansible** — 3 playbooks (installer Docker, déployer, récupérer les secrets Vault), enchaînés par `site.yml`, rejouables sans casser l'existant |
+| Conteneurisation des microservices | — (pas de notion équivalente si buy-02 n'avait qu'une seule app) | chaque microservice a son **Dockerfile** (build multi-stage Maven→JRE, utilisateur non-root) et tourne en conteneur, pas juste l'infra (Postgres/Neo4j/Vault) |
+| Répartition de charge entre répliques | un seul processus par service | `deploy.replicas: 2` par microservice dans `docker-compose.yml` — Docker répartit les requêtes entre répliques via son DNS interne, sans changer une ligne de `RouteConfig.java` |
+| Chiffrement du trafic | HTTP en clair | **Nginx** en frontal, termine le TLS (certificat auto-signé en dev), seul point exposé sur Internet |
+
+**Le point le plus subtil : pourquoi `deploy.yml` s'exécute deux fois dans `site.yml`.** Chaque microservice a besoin d'identifiants Vault pour démarrer, mais Vault doit d'abord tourner et être initialisé pour que ces identifiants existent — un vrai problème d'œuf et de poule. Premier passage : la stack démarre, les microservices échouent faute d'identifiants (ils redémarrent en boucle sans rien casser). Un playbook dédié récupère alors les vrais identifiants et les écrit dans `.env`. Second passage : Docker Compose ne recrée que les conteneurs dont la configuration a changé (les microservices), qui démarrent cette fois avec de vrais identifiants. À retenir pour l'audit : c'est une dépendance résolue par étapes explicites et idempotentes, pas un script fragile avec un `sleep` au hasard.
