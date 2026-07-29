@@ -58,11 +58,8 @@ pipeline {
         stage('Build & Test') {
             steps {
                 script {
-                    def branches = SERVICES.collectEntries { svc ->
-                        [svc, { buildService(svc) }]
-                    }
-                    branches['frontend'] = { buildFrontend() }
-                    parallel(branches)
+                    SERVICES.each { svc -> buildService(svc) }
+                    buildFrontend()
                 }
             }
         }
@@ -70,11 +67,8 @@ pipeline {
         stage('SonarQube Analysis & Quality Gate') {
             steps {
                 script {
-                    def branches = SERVICES.collectEntries { svc ->
-                        [svc, { sonarService(svc) }]
-                    }
-                    branches['frontend'] = { sonarFrontend() }
-                    parallel(branches)
+                    SERVICES.each { svc -> sonarService(svc) }
+                    sonarFrontend()
                 }
             }
         }
