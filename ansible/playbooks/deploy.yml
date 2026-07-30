@@ -67,6 +67,21 @@
       register: pull_result
       changed_when: "'Downloaded newer image' in pull_result.stdout"
 
+    - name: Force-remove any previous vault-init container (one-shot init container; reusing a stopped one can hit a stale Docker Desktop/WSL2 bind-mount bug)
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --project-directory
+          - "{{ project_dir }}"
+          - rm
+          - -f
+          - -s
+          - vault-init
+      register: vault_init_rm
+      changed_when: "'Removing' in vault_init_rm.stdout"
+      failed_when: false
+
     - name: Deploy infra, microservices and the reverse proxy (docker compose up)
       ansible.builtin.command:
         argv:
