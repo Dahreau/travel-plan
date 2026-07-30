@@ -1,14 +1,18 @@
 package com.travel_plan.auth_service.vault;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.http.HttpClient;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
 import java.security.SecureRandom;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Map;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -27,31 +31,37 @@ public class VaultClient {
     public VaultClient(
             @Value("${app.vault.addr}") String vaultAddr,
             @Value("${app.vault.role-id}") String roleId,
-            @Value("${app.vault.secret-id}") String secretId) {
+            @Value("${app.vault.secret-id}") String secretId,
+            @Value("${app.vault.tls-cert-path}") String vaultTlsCertPath) {
         this(vaultAddr, roleId, secretId, RestClient.builder()
-                .requestFactory(new JdkClientHttpRequestFactory(internalNetworkHttpClient()))
+                .requestFactory(new JdkClientHttpRequestFactory(vaultHttpClient(vaultTlsCertPath)))
                 .build());
     }
 
-    // Vault utilise un certificat auto-signe sur le reseau Docker interne (meme choix que Nginx).
-    private static HttpClient internalNetworkHttpClient() {
+    // Vault a sa propre CA auto-signee (infra/vault/certs/vault.crt) : on ne fait confiance qu'a elle.
+    private static HttpClient vaultHttpClient(String vaultTlsCertPath) {
+        Path certPath = Path.of(vaultTlsCertPath);
+        if (!Files.exists(certPath)) {
+            return HttpClient.newHttpClient();
+        }
         try {
-            TrustManager[] trustAllCerts = {
-                new X509TrustManager() {
-                    public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+            KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+            trustStore.load(null, null);
+            try (InputStream in = Files.newInputStream(certPath)) {
+                X509Certificate vaultCert =
+                        (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(in);
+                trustStore.setCertificateEntry("vault", vaultCert);
+            }
 
-                    public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+            TrustManagerFactory trustManagerFactory =
+                    TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustManagerFactory.init(trustStore);
 
-                    public X509Certificate[] getAcceptedIssuers() {
-                        return new X509Certificate[0];
-                    }
-                }
-            };
             SSLContext sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(null, trustAllCerts, new SecureRandom());
+            sslContext.init(null, trustManagerFactory.getTrustManagers(), new SecureRandom());
             return HttpClient.newBuilder().sslContext(sslContext).build();
-        } catch (NoSuchAlgorithmException | KeyManagementException e) {
-            throw new IllegalStateException("Failed to configure internal-network HTTP client for Vault", e);
+        } catch (IOException | GeneralSecurityException e) {
+            throw new IllegalStateException("Failed to load Vault TLS certificate from " + vaultTlsCertPath, e);
         }
     }
 

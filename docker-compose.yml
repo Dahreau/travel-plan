@@ -135,6 +135,7 @@ services:
       SPRING_PROFILES_ACTIVE: docker
     volumes:
       - ./infra/internal-tls/certs:/etc/internal-tls:ro
+      - ./infra/vault/certs:/etc/vault-tls:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/localhost/8081'"]
       interval: 10s
@@ -168,6 +169,7 @@ services:
       SPRING_PROFILES_ACTIVE: docker
     volumes:
       - ./infra/internal-tls/certs:/etc/internal-tls:ro
+      - ./infra/vault/certs:/etc/vault-tls:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/localhost/8082'"]
       interval: 10s
@@ -206,6 +208,7 @@ services:
       SPRING_PROFILES_ACTIVE: docker
     volumes:
       - ./infra/internal-tls/certs:/etc/internal-tls:ro
+      - ./infra/vault/certs:/etc/vault-tls:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/localhost/8083'"]
       interval: 10s
@@ -239,6 +242,7 @@ services:
       SPRING_PROFILES_ACTIVE: docker
     volumes:
       - ./infra/internal-tls/certs:/etc/internal-tls:ro
+      - ./infra/vault/certs:/etc/vault-tls:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/localhost/8084'"]
       interval: 10s
@@ -286,6 +290,7 @@ services:
       SPRING_PROFILES_ACTIVE: docker
     volumes:
       - ./infra/internal-tls/certs:/etc/internal-tls:ro
+      - ./infra/vault/certs:/etc/vault-tls:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/localhost/8080'"]
       interval: 10s
