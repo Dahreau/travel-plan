@@ -77,9 +77,14 @@
           - up
           - -d
           - --remove-orphans
-      changed_when: true
+          - --build
+      changed_when: compose_up_result.rc == 0
       failed_when: false
       register: compose_up_result
+
+    - name: Show docker compose output (always, even when this pass tolerates failure)
+      ansible.builtin.debug:
+        msg: "{{ (compose_up_result.stdout_lines | default([])) + (compose_up_result.stderr_lines | default([])) }}"
 
     - name: Fail loudly unless this pass is expected to leave services unhealthy (pre-Vault-secrets bootstrap pass)
       ansible.builtin.fail:

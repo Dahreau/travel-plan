@@ -79,12 +79,12 @@ flowchart LR
 | `agent any` | tourne sur Jenkins lui-même, pas de machine de build séparée |
 | `disableConcurrentBuilds()` | empêche deux builds du même job en parallèle |
 | `checkout scm` | récupère la bonne révision (branche/PR) sans URL en dur — le même Jenkinsfile sert à tout le monde |
-| `SERVICES` | liste en dur des services **réellement implémentés** (`api-gateway`, `auth-service`, `user-service` aujourd'hui) — un service rejoint la liste avec sa propre PR d'implémentation, pas avant que son code n'existe |
+| `SERVICES` | liste en dur des services **réellement implémentés** (les 5 : `api-gateway`, `auth-service`, `user-service`, `travel-service`, `payment-service`) — un service rejoint la liste avec sa propre PR d'implémentation, pas avant que son code n'existe |
 | `services.collectEntries { ... }` + `parallel(...)` | construit une branche parallèle par service de `SERVICES` |
 | `buildService`/`sonarService` | factorisent l'appel Maven (évite de le dupliquer) ; lancent `./mvnw` **directement sur l'agent Jenkins**, pas dans un conteneur jetable |
 | `withSonarQubeEnv('sonarqube')` | injecte l'URL/le token SonarQube sans les coder en dur |
 | `-Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300` | propriété passée directement au scanner Maven : il sonde lui-même l'API SonarQube et fait échouer le build si le Quality Gate ne passe pas — pas de step Jenkins séparé, pas de dépendance au webhook |
-| `when { branch 'main' }` | conditionne l'exécution de `Deploy` à ce build précis |
+| `stage('Deploy')` | tourne sur **chaque** build, quelle que soit la branche — lance `ansible-playbook site.yml` sur le checkout de Jenkins, via le socket Docker de l'hôte |
 
 Un point qui mérite plus qu'une ligne dans le tableau :
 
@@ -96,13 +96,18 @@ Voir [`nouveautes-vs-buy02.md`](nouveautes-vs-buy02.md#cicd-choresetup-jenkins) 
 
 ## Ce qui reste à faire (hors scope de cette étape)
 
-- Le stage `Deploy` (build image + Ansible), une fois ces briques prêtes.
 - Séparer tests unitaires (chaque push/PR) et tests d'intégration/E2E plus lourds (uniquement sur merge `main`), une fois qu'il y aura des tests d'intégration à faire tourner.
 
 ## Pourquoi ces choix
 
 ### Pourquoi cette étape est construite en premier
-L'énoncé impose qu'une PR passe par Jenkins avant de pouvoir être mergée. Ce socle ne dépend d'aucune décision applicative (gateway, Vault...) — seul `Deploy` en dépendra, volontairement laissé en `TODO`.
+L'énoncé impose qu'une PR passe par Jenkins avant de pouvoir être mergée. Ce socle ne dépend d'aucune décision applicative (gateway, Vault...).
+
+### Pourquoi le stage `Deploy` monte le socket Docker de l'hôte plutôt que d'utiliser Docker-in-Docker
+`Deploy` a besoin de lancer `docker compose`/`ansible-playbook`, donc d'un accès à un démon Docker. Monter `/var/run/docker.sock` (Docker-outside-of-Docker) est plus simple que d'imbriquer un second démon (Docker-in-Docker) et évite de dupliquer le cache d'images. Cet accès est équivalent à un accès root sur l'hôte — acceptable ici car les PR de forks externes sont déjà exclues (voir plus haut) et que seuls les 2 contributeurs du projet peuvent pousser une branche. Le conteneur Jenkins tourne d'ailleurs en `root` (pas d'utilisateur applicatif dédié) : une fois le socket monté, la frontière de sécurité qui compte est "le socket est accessible ou non", pas l'UID interne du conteneur — inutile de complexifier le mapping de groupe Unix (`docker` GID) pour un gain de sécurité illusoire.
+
+### Pourquoi `Deploy` tourne sur chaque build, pas seulement sur `main`
+Vérifier que la stack se déploie proprement à chaque PR (pas seulement une fois mergée) attrape les régressions avant qu'elles n'atteignent `main`, plutôt qu'après. Le stage réutilise le clone que Jenkins fait déjà à chaque build (`checkout scm`), pas le dossier de travail lancé à la main — ça évite tout chemin d'hôte en dur (donc reproductible sur n'importe quelle machine CI). Tout tourne sur la même machine (même démon Docker, même nom de projet Compose que la stack lancée à la main) — assumé, une seule personne à la fois décide de ce qui tourne sur son propre poste.
 
 ### Pourquoi un scan périodique plutôt qu'un webhook
 Un webhook demanderait que Jenkins soit joignable depuis internet — pas reproductible pour un coéquipier qui héberge sa propre instance. Le scan toutes les 1 minute ne demande aucune exposition réseau et reste largement assez réactif (très loin de la limite API GitHub, 5000 req/h).

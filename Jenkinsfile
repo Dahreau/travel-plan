@@ -58,11 +58,8 @@ pipeline {
         stage('Build & Test') {
             steps {
                 script {
-                    def branches = SERVICES.collectEntries { svc ->
-                        [svc, { buildService(svc) }]
-                    }
-                    branches['frontend'] = { buildFrontend() }
-                    parallel(branches)
+                    SERVICES.each { svc -> buildService(svc) }
+                    buildFrontend()
                 }
             }
         }
@@ -70,19 +67,22 @@ pipeline {
         stage('SonarQube Analysis & Quality Gate') {
             steps {
                 script {
-                    def branches = SERVICES.collectEntries { svc ->
-                        [svc, { sonarService(svc) }]
-                    }
-                    branches['frontend'] = { sonarFrontend() }
-                    parallel(branches)
+                    SERVICES.each { svc -> sonarService(svc) }
+                    sonarFrontend()
                 }
             }
         }
 
         stage('Deploy') {
-            when { branch 'main' }
             steps {
-                echo 'TODO: build images Docker + ansible-playbook deploy.yml (étape à venir, pas encore construite)'
+                sh '''
+                    DEPLOY_DIR="$HOST_REPO_PATH/infra/ci/deploy-workspace"
+                    rm -rf "$DEPLOY_DIR"/*
+                    tar --exclude=.git --exclude=node_modules --exclude=target --exclude=dist --exclude=.angular -C "$WORKSPACE" -cf - . | tar -C "$DEPLOY_DIR" -xf -
+                    cd ansible
+                    ansible-galaxy collection install -r requirements.yml
+                    ansible-playbook -i inventory.ini playbooks/site.yml -e project_dir="$DEPLOY_DIR" -e vault_addr="http://host.docker.internal:8200"
+                '''
             }
         }
     }

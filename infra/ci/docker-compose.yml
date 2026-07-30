@@ -11,12 +11,15 @@ services:
       JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD}
       GITHUB_TOKEN: ${GITHUB_TOKEN}
       SONAR_TOKEN: ${SONAR_TOKEN}
+      HOST_REPO_PATH: ${HOST_REPO_PATH}
     ports:
       - "8090:8080"
     volumes:
       - jenkins_home:/var/jenkins_home
       - ./jenkins/casc.yaml:/var/jenkins_home/casc.yaml:ro
       - maven_repo:/var/jenkins_home/.m2
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_REPO_PATH}/infra/ci/deploy-workspace:${HOST_REPO_PATH}/infra/ci/deploy-workspace
     networks:
       - ci
 
