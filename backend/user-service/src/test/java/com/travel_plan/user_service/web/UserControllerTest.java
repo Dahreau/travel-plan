@@ -95,6 +95,26 @@ class UserControllerTest {
     }
 
     @Test
+    void createReturns400ForMalformedJson() throws Exception {
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{not-json"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createReturns500ForUnexpectedException() throws Exception {
+        when(userService.create(any(UserRequest.class))).thenThrow(new IllegalStateException("boom"));
+
+        UserRequest request = new UserRequest("Ada", "Lovelace", "ada@travel-plan.com", null, Role.TRAVELER, null);
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isInternalServerError());
+    }
+
+    @Test
     void updateReplacesUserFields() throws Exception {
         UUID id = UUID.randomUUID();
         when(userService.update(any(UUID.class), any(UserRequest.class)))
