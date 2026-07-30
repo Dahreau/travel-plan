@@ -63,12 +63,12 @@ flowchart LR
     Jenkins --> Build[Build + tests unitaires<br/>en parallèle, tous les services de SERVICES]
     Build --> Sonar[Analyse SonarQube + Quality Gate<br/>en parallèle, un gate par service]
     Sonar -->|OK| Status[Statut renvoyé sur la PR GitHub]
-    Sonar -->|main uniquement| Deploy[Deploy — TODO, pas encore construit]
+    Sonar --> Deploy[Deploy<br/>Ansible via le socket Docker de l'hôte]
 ```
 
 ## Ce qui est construit dans `infra/ci/`
 
-- **`jenkins/Dockerfile` + `plugins.txt`** — image Jenkins avec les plugins nécessaires (Git, GitHub, Pipeline, deux plugins de vue distincts `pipeline-stage-view`/`pipeline-graph-view`, Docker Pipeline, SonarQube Scanner, Configuration as Code). Jenkins n'a **aucun accès à Docker** actuellement — `mvnw` tourne directement sur l'agent, `Validate infra` ne fait que de la syntaxe (détails plus bas).
+- **`jenkins/Dockerfile` + `plugins.txt`** — image Jenkins avec les plugins nécessaires (Git, GitHub, Pipeline, deux plugins de vue distincts `pipeline-stage-view`/`pipeline-graph-view`, Docker Pipeline, SonarQube Scanner, Configuration as Code), plus `docker-ce-cli`/`docker-compose-plugin`/`ansible` installés dans l'image — Jenkins pilote le démon Docker de l'hôte via `/var/run/docker.sock` monté (docker-outside-of-docker, voir `08-ansible-deploy-tls.md`), utilisé par le stage `Deploy`. `mvnw` continue de tourner directement sur l'agent pour `Build & Test`, `Validate infra` ne fait que de la syntaxe (détails plus bas).
 - **`jenkins/casc.yaml`** — Configuration as Code : utilisateur admin, connexion SonarQube, credentials toujours injectés par variable d'env (jamais en dur).
 - **`docker-compose.yml`** — Jenkins + SonarQube + sa base Postgres, avec un volume Maven partagé (`maven_repo` → `/var/jenkins_home/.m2`) pour ne pas retélécharger les dépendances à chaque build.
 
@@ -84,7 +84,8 @@ flowchart LR
 | `buildService`/`sonarService` | factorisent l'appel Maven (évite de le dupliquer) ; lancent `./mvnw` **directement sur l'agent Jenkins**, pas dans un conteneur jetable |
 | `withSonarQubeEnv('sonarqube')` | injecte l'URL/le token SonarQube sans les coder en dur |
 | `-Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300` | propriété passée directement au scanner Maven : il sonde lui-même l'API SonarQube et fait échouer le build si le Quality Gate ne passe pas — pas de step Jenkins séparé, pas de dépendance au webhook |
-| `stage('Deploy')` | tourne sur **chaque** build, quelle que soit la branche — lance `ansible-playbook site.yml` sur le checkout de Jenkins, via le socket Docker de l'hôte |
+| `stage('Deploy')` | tourne sur **chaque** build, quelle que soit la branche — copie le checkout dans `infra/ci/deploy-workspace` (chemin hôte réel, nécessaire pour que le daemon Docker de l'hôte résolve les bind-mounts), puis lance `ansible-playbook site.yml` dessus |
+| `cleanWs()` (stage Checkout) | vide entièrement le workspace avant chaque `checkout scm` — rend chaque build auto-réparant contre une corruption `.git` (déjà arrivé deux fois), quelle qu'en soit la cause |
 
 Un point qui mérite plus qu'une ligne dans le tableau :
 
@@ -107,7 +108,7 @@ L'énoncé impose qu'une PR passe par Jenkins avant de pouvoir être mergée. Ce
 `Deploy` a besoin de lancer `docker compose`/`ansible-playbook`, donc d'un accès à un démon Docker. Monter `/var/run/docker.sock` (Docker-outside-of-Docker) est plus simple que d'imbriquer un second démon (Docker-in-Docker) et évite de dupliquer le cache d'images. Cet accès est équivalent à un accès root sur l'hôte — acceptable ici car les PR de forks externes sont déjà exclues (voir plus haut) et que seuls les 2 contributeurs du projet peuvent pousser une branche. Le conteneur Jenkins tourne d'ailleurs en `root` (pas d'utilisateur applicatif dédié) : une fois le socket monté, la frontière de sécurité qui compte est "le socket est accessible ou non", pas l'UID interne du conteneur — inutile de complexifier le mapping de groupe Unix (`docker` GID) pour un gain de sécurité illusoire.
 
 ### Pourquoi `Deploy` tourne sur chaque build, pas seulement sur `main`
-Vérifier que la stack se déploie proprement à chaque PR (pas seulement une fois mergée) attrape les régressions avant qu'elles n'atteignent `main`, plutôt qu'après. Le stage réutilise le clone que Jenkins fait déjà à chaque build (`checkout scm`), pas le dossier de travail lancé à la main — ça évite tout chemin d'hôte en dur (donc reproductible sur n'importe quelle machine CI). Tout tourne sur la même machine (même démon Docker, même nom de projet Compose que la stack lancée à la main) — assumé, une seule personne à la fois décide de ce qui tourne sur son propre poste.
+Vérifier que la stack se déploie proprement à chaque PR (pas seulement une fois mergée) attrape les régressions avant qu'elles n'atteignent `main`, plutôt qu'après. Le stage copie le clone que Jenkins fait déjà à chaque build (`checkout scm`) vers un chemin hôte réel (`HOST_REPO_PATH`), pas le dossier de travail lancé à la main — ça évite tout chemin d'hôte en dur (donc reproductible sur n'importe quelle machine CI). Tout tourne sur la même machine (même démon Docker, même nom de projet Compose que la stack lancée à la main) — assumé, une seule personne à la fois décide de ce qui tourne sur son propre poste.
 
 ### Pourquoi un scan périodique plutôt qu'un webhook
 Un webhook demanderait que Jenkins soit joignable depuis internet — pas reproductible pour un coéquipier qui héberge sa propre instance. Le scan toutes les 1 minute ne demande aucune exposition réseau et reste largement assez réactif (très loin de la limite API GitHub, 5000 req/h).
@@ -124,16 +125,13 @@ On a testé une version plus poussée (`docker compose up --wait` sur toute la s
 
 *Limite assumée* : ça ne vérifie pas que les conteneurs démarrent vraiment. Si ça redevient un vrai problème (plusieurs coéquipiers actifs), la bonne réponse sera Testcontainers, pas de refaire tourner `docker compose` depuis Jenkins.
 
-### Pourquoi le stage `Deploy` est vide
-Construire des images et appeler Ansible n'a de sens que quand ces briques existent. Le stage reste présent (branché sur `main`) pour que la structure du pipeline n'ait pas à être réécrite plus tard.
-
 ### Pourquoi `mvnw` tourne directement sur Jenkins
 Isoler Maven dans un conteneur jetable n'apporte rien tant que les 5 services sont des coquilles Spring Initializr sans dépendance système à isoler. Un vrai choix technique reviendra le jour où ça change — pas une contrainte.
 
 Le Dockerfile prépare aussi `/var/jenkins_home/.m2` (`chown jenkins:jenkins` avant de repasser en `USER jenkins`) : un volume Docker neuf appartient à `root` par défaut, sinon `mvnw` échoue au premier build (`mkdir: Permission denied`) dès que `maven_repo` est vide (premier lancement, ou après un `down -v`).
 
-### Pourquoi Jenkins n'a aujourd'hui aucun accès à Docker
-Le seul besoin identifié était la version "vraie stack" de `Validate infra`, abandonnée (voir plus haut). Sans besoin réel, donner un accès Docker à Jenkins — même via un proxy restreint — ajoute une surface d'attaque pour rien. Ce choix sera revisité quand `Deploy` construira de vraies images.
+### Pourquoi Jenkins a maintenant accès à Docker (docker-outside-of-docker)
+Le stage `Deploy` a besoin de piloter `docker compose`/`ansible-playbook`, donc d'un démon Docker. Monter `/var/run/docker.sock` (docker-outside-of-docker) plutôt que d'imbriquer un second démon (Docker-in-Docker) évite de dupliquer le cache d'images et reste plus simple à faire fonctionner de manière fiable. Cet accès équivaut à un accès root sur l'hôte — acceptable ici car les PR de forks externes sont déjà exclues et seuls les contributeurs du projet peuvent pousser une branche. Détails complets (dont le bug de bind-mount contourné en montant le même chemin hôte réel des deux côtés) : `08-ansible-deploy-tls.md`.
 
 ### Pourquoi les tests `contextLoads()` excluent la base de données
 Les 5 services partent de coquilles Spring Initializr avec un seul test généré qui démarre tout le contexte Spring — et tente donc de se connecter à une vraie base, absente sur l'agent Jenkins (pas de stack applicative ici).

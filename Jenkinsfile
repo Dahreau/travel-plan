@@ -6,7 +6,7 @@ def buildService(svc) {
 
 def sonarService(svc) {
     withSonarQubeEnv('sonarqube') {
-        sh "cd backend/${svc} && ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=travel-plan-${svc} -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300"
+        sh "cd backend/${svc} && ./mvnw -B org.sonarsource.scanner.maven:sonar-maven-plugin:5.7.0.6970:sonar -Dsonar.projectKey=travel-plan-${svc} -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300"
     }
 }
 
@@ -82,7 +82,7 @@ pipeline {
                     tar --exclude=.git --exclude=node_modules --exclude=target --exclude=dist --exclude=.angular -C "$WORKSPACE" -cf - . | tar -C "$DEPLOY_DIR" -xf -
                     cd ansible
                     ansible-galaxy collection install -r requirements.yml
-                    ansible-playbook -i inventory.ini playbooks/site.yml -e project_dir="$DEPLOY_DIR" -e vault_addr="http://host.docker.internal:8200"
+                    ansible-playbook -i inventory.ini playbooks/site.yml -e project_dir="$DEPLOY_DIR"
                 '''
             }
         }

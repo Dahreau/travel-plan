@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.travel_plan.payment_service.domain.PaymentStatus;
 import com.travel_plan.payment_service.domain.ProviderType;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -75,6 +76,53 @@ class PayPalPaymentProviderTest {
         assertThatThrownBy(() -> provider.charge(request))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("order id");
+    }
+
+    @Test
+    void chargeStoresCaptureIdRatherThanOrderIdWhenPresent() {
+        stubOAuthToken("access-token-123");
+        Map<String, Object> capture = Map.of("id", "capture-1", "status", "COMPLETED");
+        Map<String, Object> payments = Map.of("captures", List.of(capture));
+        Map<String, Object> purchaseUnit = Map.of("payments", payments);
+        stubCreateOrder(Map.of("id", "order-1", "status", "COMPLETED", "purchase_units", List.of(purchaseUnit)));
+
+        ChargeResult result = provider.charge(new ChargeRequest(new BigDecimal("42.00"), "EUR", "vault-token-1"));
+
+        assertThat(result.providerReference()).isEqualTo("capture-1");
+    }
+
+    @Test
+    void refundSucceedsWhenPayPalConfirms() {
+        stubOAuthToken("access-token-123");
+        stubRefundCapture("capture-1", Map.of("id", "refund-1", "status", "COMPLETED"));
+
+        provider.refund("capture-1");
+    }
+
+    @Test
+    void refundThrowsWhenPayPalReportsFailed() {
+        stubOAuthToken("access-token-123");
+        stubRefundCapture("capture-2", Map.of("id", "refund-2", "status", "FAILED"));
+
+        assertThatThrownBy(() -> provider.refund("capture-2")).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void refundThrowsWhenPayPalResponseHasNoId() {
+        stubOAuthToken("access-token-123");
+        stubRefundCapture("capture-3", Map.of("status", "COMPLETED"));
+
+        assertThatThrownBy(() -> provider.refund("capture-3")).isInstanceOf(IllegalStateException.class);
+    }
+
+    private void stubRefundCapture(String captureId, Map<String, Object> response) {
+        RestClient.RequestBodySpec bodySpec = mock(RestClient.RequestBodySpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+
+        when(bodyUriSpec.uri(API_BASE + "/v2/payments/captures/" + captureId + "/refund")).thenReturn(bodySpec);
+        when(bodySpec.headers(any())).thenReturn(bodySpec);
+        when(bodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(Map.class)).thenReturn(response);
     }
 
     private void stubOAuthToken(String accessToken) {

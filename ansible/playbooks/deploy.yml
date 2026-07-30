@@ -50,6 +50,38 @@
           - /CN=travel-plan.local
         creates: "{{ project_dir }}/infra/nginx/certs/travel-plan.crt"
 
+    - name: Ensure the internal service-to-service TLS certs directory exists
+      ansible.builtin.file:
+        path: "{{ project_dir }}/infra/internal-tls/certs"
+        state: directory
+        mode: "0755"
+
+    - name: Generate a self-signed TLS certificate for internal service-to-service traffic (skipped if it already exists)
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -x509
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -keyout
+          - "{{ project_dir }}/infra/internal-tls/certs/internal.key"
+          - -out
+          - "{{ project_dir }}/infra/internal-tls/certs/internal.crt"
+          - -days
+          - "365"
+          - -subj
+          - /CN=travel-plan-internal
+          # nginx (proxy_ssl_verify) et le client HTTP sortant d'api-gateway verifient tous les
+          # deux le hostname du certificat, pas seulement la chaine de confiance. Un seul CN ne
+          # suffit donc pas : il faut un SAN par nom DNS interne reellement appele (le nom de
+          # service partage "api-gateway", et chaque conteneur de replica explicitement adresse
+          # par le LoadBalancer cote gateway).
+          - -addext
+          - "subjectAltName=DNS:api-gateway,DNS:travel-plan-app-auth-service-1,DNS:travel-plan-app-auth-service-2,DNS:travel-plan-app-user-service-1,DNS:travel-plan-app-user-service-2,DNS:travel-plan-app-travel-service-1,DNS:travel-plan-app-travel-service-2,DNS:travel-plan-app-payment-service-1,DNS:travel-plan-app-payment-service-2"
+        creates: "{{ project_dir }}/infra/internal-tls/certs/internal.crt"
+
     - name: Pre-pull third-party images explicitly for linux/amd64
       ansible.builtin.command:
         argv:

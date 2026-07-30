@@ -2,21 +2,33 @@ package com.travel_plan.travel_service.graph;
 
 import com.travel_plan.travel_service.domain.Destination;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
+import org.springframework.data.neo4j.core.transaction.Neo4jTransactionManager;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
-@RequiredArgsConstructor
 public class TravelGraphSyncService {
 
     private final PlaceRepository placeRepository;
+    private final TransactionTemplate neo4jTransactionTemplate;
+
+    // Transaction Neo4j explicite et independante de celle (JPA/Postgres) de l'appelant :
+    // Postgres et Neo4j sont deux bases distinctes sans atomicite reelle entre elles, donc
+    // partager la transaction ambiante n'apporte rien et faisait echouer les requetes
+    // derivees de Spring Data Neo4j (executees hors de tout contexte transactionnel Neo4j).
+    // Injection par TYPE (pas par nom de bean) : un seul Neo4jTransactionManager existe dans
+    // le contexte, donc Spring le resout sans ambiguite quel que soit son nom interne.
+    public TravelGraphSyncService(PlaceRepository placeRepository, Neo4jTransactionManager neo4jTransactionManager) {
+        this.placeRepository = placeRepository;
+        this.neo4jTransactionTemplate = new TransactionTemplate(neo4jTransactionManager);
+    }
 
     public void recordRoute(List<Destination> orderedDestinations) {
-        adjustRoutes(orderedDestinations, 1);
+        neo4jTransactionTemplate.executeWithoutResult(status -> adjustRoutes(orderedDestinations, 1));
     }
 
     public void removeRoute(List<Destination> orderedDestinations) {
-        adjustRoutes(orderedDestinations, -1);
+        neo4jTransactionTemplate.executeWithoutResult(status -> adjustRoutes(orderedDestinations, -1));
     }
 
     private void adjustRoutes(List<Destination> orderedDestinations, int delta) {

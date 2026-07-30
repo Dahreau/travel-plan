@@ -55,6 +55,27 @@ class StripePaymentProviderTest {
         assertThatThrownBy(() -> provider.charge(request)).isInstanceOf(IllegalStateException.class);
     }
 
+    @Test
+    void refundSucceedsWhenStripeConfirms() {
+        stubStripeResponse(Map.of("id", "re_123", "status", "succeeded"));
+
+        provider.refund("pi_123");
+    }
+
+    @Test
+    void refundThrowsWhenStripeReportsFailed() {
+        stubStripeResponse(Map.of("id", "re_456", "status", "failed"));
+
+        assertThatThrownBy(() -> provider.refund("pi_456")).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void refundThrowsWhenStripeResponseHasNoId() {
+        stubStripeResponse(Map.of("status", "succeeded"));
+
+        assertThatThrownBy(() -> provider.refund("pi_789")).isInstanceOf(IllegalStateException.class);
+    }
+
     private void stubStripeResponse(Map<String, Object> response) {
         RestClient.RequestBodyUriSpec bodyUriSpec = mock(RestClient.RequestBodyUriSpec.class);
         RestClient.RequestBodySpec bodySpec = mock(RestClient.RequestBodySpec.class);

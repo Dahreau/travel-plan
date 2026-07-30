@@ -4,6 +4,7 @@ import com.travel_plan.payment_service.domain.PaymentStatus;
 import com.travel_plan.payment_service.domain.ProviderType;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -58,7 +59,44 @@ public class PayPalPaymentProvider implements PaymentProvider {
 
         String status = String.valueOf(response.get("status"));
         PaymentStatus mappedStatus = "COMPLETED".equals(status) ? PaymentStatus.SUCCEEDED : PaymentStatus.FAILED;
-        return new ChargeResult(String.valueOf(response.get("id")), mappedStatus);
+        // Un refund PayPal cible la capture (le prelevement reel), pas la commande : on
+        // stocke donc l'id de capture quand la commande est completee, avec repli sur l'id
+        // de commande si la structure attendue est absente (commande non capturee, etc.).
+        String reference = mappedStatus == PaymentStatus.SUCCEEDED
+                ? extractCaptureId(response).orElse(String.valueOf(response.get("id")))
+                : String.valueOf(response.get("id"));
+        return new ChargeResult(reference, mappedStatus);
+    }
+
+    @Override
+    public void refund(String providerReference) {
+        String accessToken = fetchAccessToken();
+
+        Map<String, Object> response = restClient
+                .post()
+                .uri(apiBase + "/v2/payments/captures/" + providerReference + "/refund")
+                .headers(headers -> headers.setBearerAuth(accessToken))
+                .retrieve()
+                .body(Map.class);
+
+        if (response == null || response.get("id") == null) {
+            throw new IllegalStateException("PayPal did not return a refund id for capture " + providerReference);
+        }
+        if ("FAILED".equals(String.valueOf(response.get("status")))) {
+            throw new IllegalStateException("PayPal refund failed for capture " + providerReference);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Optional<String> extractCaptureId(Map<String, Object> response) {
+        try {
+            List<Map<String, Object>> purchaseUnits = (List<Map<String, Object>>) response.get("purchase_units");
+            Map<String, Object> payments = (Map<String, Object>) purchaseUnits.get(0).get("payments");
+            List<Map<String, Object>> captures = (List<Map<String, Object>>) payments.get("captures");
+            return Optional.ofNullable(captures.get(0).get("id")).map(String::valueOf);
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
     }
 
     private String fetchAccessToken() {

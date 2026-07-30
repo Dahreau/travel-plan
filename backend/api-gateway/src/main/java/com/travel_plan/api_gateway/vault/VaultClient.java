@@ -1,8 +1,17 @@
 package com.travel_plan.api_gateway.vault;
 
+import java.net.http.HttpClient;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.util.Map;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -19,7 +28,35 @@ public class VaultClient {
             @Value("${app.vault.addr}") String vaultAddr,
             @Value("${app.vault.role-id}") String roleId,
             @Value("${app.vault.secret-id}") String secretId) {
-        this(vaultAddr, roleId, secretId, RestClient.create());
+        this(vaultAddr, roleId, secretId, RestClient.builder()
+                .requestFactory(new JdkClientHttpRequestFactory(internalNetworkHttpClient()))
+                .build());
+    }
+
+    // Vault presente un certificat auto-signe sur le reseau Docker interne (aucune AC
+    // publique ne signe un certificat pour un nom qui n'existe que dans notre propre
+    // bridge). Faire confiance a ce certificat precis ici est equivalent au choix deja
+    // fait pour Nginx : le trafic reste chiffre, seule la validation par une AC tierce
+    // est absente - acceptable pour un flux qui ne sort jamais du reseau Docker isole.
+    private static HttpClient internalNetworkHttpClient() {
+        try {
+            TrustManager[] trustAllCerts = {
+                new X509TrustManager() {
+                    public void checkClientTrusted(X509Certificate[] chain, String authType) {}
+
+                    public void checkServerTrusted(X509Certificate[] chain, String authType) {}
+
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
+                }
+            };
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new SecureRandom());
+            return HttpClient.newBuilder().sslContext(sslContext).build();
+        } catch (NoSuchAlgorithmException | KeyManagementException e) {
+            throw new IllegalStateException("Failed to configure internal-network HTTP client for Vault", e);
+        }
     }
 
     VaultClient(String vaultAddr, String roleId, String secretId, RestClient restClient) {

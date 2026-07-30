@@ -25,23 +25,23 @@ public class TravelController {
 
     @GetMapping
     public List<TravelResponse> findAll() {
-        return travelService.findAll().stream().map(TravelResponse::from).toList();
+        return travelService.findAll();
     }
 
     @GetMapping("/{id}")
     public TravelResponse findById(@PathVariable UUID id) {
-        return TravelResponse.from(travelService.findById(id));
+        return travelService.findById(id);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public TravelResponse create(@Valid @RequestBody TravelRequest request) {
-        return TravelResponse.from(travelService.create(request));
+        return travelService.create(request);
     }
 
     @PutMapping("/{id}")
     public TravelResponse update(@PathVariable UUID id, @Valid @RequestBody TravelRequest request) {
-        return TravelResponse.from(travelService.update(id, request));
+        return travelService.update(id, request);
     }
 
     @DeleteMapping("/{id}")

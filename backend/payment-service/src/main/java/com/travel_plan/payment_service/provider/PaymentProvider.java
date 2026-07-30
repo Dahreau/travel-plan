@@ -7,4 +7,6 @@ public interface PaymentProvider {
     ProviderType type();
 
     ChargeResult charge(ChargeRequest request);
+
+    void refund(String providerReference);
 }

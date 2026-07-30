@@ -78,6 +78,7 @@ export class UserForm implements OnInit {
   protected submit(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      this.toastService.error('Certains champs sont manquants ou invalides.');
       return;
     }
 
