@@ -81,7 +81,7 @@ pipeline {
                     tar --exclude=.git --exclude=node_modules --exclude=target --exclude=dist --exclude=.angular -C "$WORKSPACE" -cf - . | tar -C "$DEPLOY_DIR" -xf -
                     cd ansible
                     ansible-galaxy collection install -r requirements.yml
-                    ansible-playbook -i inventory.ini playbooks/site.yml -e project_dir="$DEPLOY_DIR"
+                    ansible-playbook -i inventory.ini playbooks/site.yml -e project_dir="$DEPLOY_DIR" -e vault_addr="http://host.docker.internal:8200"
                 '''
             }
         }
