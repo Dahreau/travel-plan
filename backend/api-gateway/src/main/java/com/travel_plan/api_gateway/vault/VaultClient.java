@@ -33,11 +33,7 @@ public class VaultClient {
                 .build());
     }
 
-    // Vault presente un certificat auto-signe sur le reseau Docker interne (aucune AC
-    // publique ne signe un certificat pour un nom qui n'existe que dans notre propre
-    // bridge). Faire confiance a ce certificat precis ici est equivalent au choix deja
-    // fait pour Nginx : le trafic reste chiffre, seule la validation par une AC tierce
-    // est absente - acceptable pour un flux qui ne sort jamais du reseau Docker isole.
+    // Vault utilise un certificat auto-signe sur le reseau Docker interne (meme choix que Nginx).
     private static HttpClient internalNetworkHttpClient() {
         try {
             TrustManager[] trustAllCerts = {

@@ -12,24 +12,15 @@ import org.springframework.transaction.PlatformTransactionManager;
 @Configuration
 public class Neo4jTransactionConfig {
 
-    // Des qu'un bean de type TransactionManager existe dans le contexte (notre
-    // Neo4jTransactionManager ci-dessous), l'auto-configuration Spring Boot du
-    // transactionManager JPA est desactivee (@ConditionalOnMissingBean(TransactionManager.class)
-    // cote JpaBaseConfiguration). Sans ca, plus aucun bean "transactionManager" n'existe et
-    // tous les @Transactional nus (TravelService, UserService, etc.) echouent au runtime avec
-    // NoSuchBeanDefinitionException. On reprend donc sa creation nous-memes, en @Primary pour
-    // que les @Transactional sans qualifier continuent de cibler Postgres/JPA sans ambiguite.
+    // Neo4jTransactionManager desactive l'auto-config du transactionManager JPA ;
+    // on le redeclare en @Primary pour ne pas casser les @Transactional existants.
     @Bean
     @Primary
     public PlatformTransactionManager transactionManager(EntityManagerFactory entityManagerFactory) {
         return new JpaTransactionManager(entityManagerFactory);
     }
 
-    // Transaction Neo4j explicite et independante de celle (JPA/Postgres) ci-dessus :
-    // Postgres et Neo4j sont deux bases distinctes sans atomicite reelle entre elles, donc
-    // partager la transaction ambiante n'apporte rien et faisait echouer les requetes derivees
-    // de Spring Data Neo4j. TravelGraphSyncService l'injecte par TYPE (Neo4jTransactionManager,
-    // pas PlatformTransactionManager), donc aucune ambiguite malgre le @Primary ci-dessus.
+    // Transaction Neo4j dediee, independante de JPA (pas d'atomicite reelle entre les deux bases).
     @Bean
     public Neo4jTransactionManager neo4jTransactionManager(Driver driver) {
         return new Neo4jTransactionManager(driver);

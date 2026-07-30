@@ -48,9 +48,7 @@ public class UserService {
         user.setPhone(request.phone());
         user.setRole(request.role());
         attachAddress(user, request.address());
-        // saveAndFlush (pas save) : @PreUpdate ne s'execute qu'au flush Hibernate, differe
-        // normalement jusqu'au commit. Sans flush immediat, le updatedAt renvoye au client
-        // serait encore l'ancien.
+        // saveAndFlush : @PreUpdate ne s'execute qu'au flush, sinon updatedAt renvoye est perime.
         return UserResponse.from(userRepository.saveAndFlush(user));
     }
 

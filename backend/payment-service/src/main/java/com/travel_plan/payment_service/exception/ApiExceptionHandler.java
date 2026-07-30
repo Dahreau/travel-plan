@@ -48,20 +48,14 @@ public class ApiExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, message);
     }
 
-    // Stripe/PayPal restent en credentials placeholder en local/demo : un rejet ou une
-    // indisponibilite du fournisseur remonte ici comme un 502 explicite plutot que de
-    // remonter non intercepte jusqu'au dispatch d'erreur interne de Spring, qui relance
-    // la chaine de securite sans contexte d'authentification et la deguise en 403 trompeur.
+    // Rejet ou indisponibilite du fournisseur de paiement -> 502 explicite plutot qu'un 500/403.
     @ExceptionHandler(RestClientException.class)
     public ResponseEntity<Map<String, Object>> handlePaymentProviderFailure(RestClientException ex) {
         log.warn("Payment provider call failed: {}", ex.getMessage());
         return build(HttpStatus.BAD_GATEWAY, "Payment provider rejected or was unreachable for this transaction");
     }
 
-    // JSON illisible (syntaxe invalide) ou valeur d'enum inconnue (ex: provider: "BLAH") :
-    // echoue dans la desalisation Jackson, AVANT que Bean Validation ne s'execute. Sans ce
-    // handler specifique, ça tombait dans le catch-all Exception generique ci-dessous et
-    // renvoyait un 500 alors que c'est une erreur du client (400).
+    // JSON invalide ou enum inconnue echoue avant Bean Validation -> 400, pas 500.
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleMalformedRequest(HttpMessageNotReadableException ex) {
         log.warn("Malformed request body: {}", ex.getMessage());

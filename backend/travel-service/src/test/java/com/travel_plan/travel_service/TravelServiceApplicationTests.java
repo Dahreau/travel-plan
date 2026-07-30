@@ -2,6 +2,7 @@ package com.travel_plan.travel_service;
 
 import com.travel_plan.travel_service.graph.PlaceRepository;
 import com.travel_plan.travel_service.repository.TravelRepository;
+import jakarta.persistence.EntityManagerFactory;
 import javax.crypto.SecretKey;
 import org.junit.jupiter.api.Test;
 import org.neo4j.driver.Driver;
@@ -39,6 +40,9 @@ class TravelServiceApplicationTests {
 
 	@MockitoBean
 	private Driver driver;
+
+	@MockitoBean
+	private EntityManagerFactory entityManagerFactory;
 
 	@Test
 	void contextLoads() {

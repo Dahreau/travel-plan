@@ -24,10 +24,7 @@ services:
       - postgres_data:/var/lib/postgresql
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
-      # 127.0.0.1 explicite (pas 0.0.0.0) : accessible depuis un client desktop local
-      # (DBeaver) mais toujours injoignable depuis le reseau local/internet - conforme
-      # a "accessible uniquement en interne", la machine hote fait partie de l'interne.
-      # Port hote 5433 (pas 5432) : 5432 est deja pris par un autre process sur cette machine.
+      # 127.0.0.1 (pas 0.0.0.0) : accessible depuis DBeaver en local, pas depuis le reseau/internet.
       - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -49,15 +46,11 @@ services:
     volumes:
       - neo4j_data:/data
     ports:
-      # Meme principe que Postgres : lie sur 127.0.0.1 uniquement. 7474 = Neo4j Browser
-      # (la vraie UI web, en HTTP clair - non concerne par le TLS active sur bolt), 7687 =
-      # bolt (chiffre, self-signed - un client desktop devra accepter ce certificat).
+      # 127.0.0.1 uniquement. 7474 = Neo4j Browser (HTTP), 7687 = bolt (chiffre, self-signed).
       - "127.0.0.1:7474:7474"
       - "127.0.0.1:7687:7687"
     healthcheck:
-      # retries porte a 12 (~2 min de budget) : activer le SSL policy bolt (chargement du
-      # certificat au demarrage) allonge le temps de boot au-dela des 50s precedentes,
-      # ce qui faisait echouer "docker compose up" avant meme que le conteneur passe healthy.
+      # retries=12 : le chargement de la SSL policy bolt allonge le boot au-dela des 50s d'avant.
       test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
       interval: 10s
       timeout: 5s
@@ -311,10 +304,7 @@ services:
       - ./infra/nginx/certs:/etc/nginx/certs:ro
       - ./infra/internal-tls/certs/internal.crt:/etc/nginx/internal-certs/internal.crt:ro
     healthcheck:
-      # 127.0.0.1 explicite : "localhost" resout en IPv6 (::1) en premier dans ce
-      # conteneur, or nginx.conf n'ecoute qu'en IPv4 (`listen 80;` sans `[::]:80;`),
-      # ce qui faisait echouer le healthcheck (connection refused) alors que nginx
-      # fonctionnait normalement pour le trafic reel (ports publies, DNS Docker en A).
+      # 127.0.0.1 explicite : "localhost" resout en IPv6 dans ce conteneur, nginx n'ecoute qu'en IPv4.
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz || exit 1"]
       interval: 10s
       timeout: 5s

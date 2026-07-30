@@ -38,19 +38,14 @@ public class ApiExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, message);
     }
 
-    // JSON illisible (syntaxe invalide) ou valeur d'enum inconnue (ex: role: "SUPERADMIN") :
-    // echoue dans la desalisation Jackson, AVANT que Bean Validation ne s'execute. Sans ce
-    // handler specifique, ça tombait dans le catch-all Exception generique ci-dessous et
-    // renvoyait un 500 alors que c'est une erreur du client (400).
+    // JSON invalide ou enum inconnue echoue avant Bean Validation -> 400, pas 500.
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleMalformedRequest(HttpMessageNotReadableException ex) {
         log.warn("Malformed request body: {}", ex.getMessage());
         return build(HttpStatus.BAD_REQUEST, "Malformed or invalid request body");
     }
 
-    // Filet de securite : toute exception non prevue ci-dessus doit rester un 500 clair,
-    // pas un 403 trompeur issu du redispatch d'erreur interne de Spring Security (voir
-    // travel-service.ApiExceptionHandler pour le detail de ce piege).
+    // Filet de securite : toute exception imprevue reste un 500 clair, pas un 403 trompeur.
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
         log.error("Unhandled exception while processing request", ex);

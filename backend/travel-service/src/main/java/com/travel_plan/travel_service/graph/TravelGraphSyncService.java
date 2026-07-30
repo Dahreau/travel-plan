@@ -12,12 +12,7 @@ public class TravelGraphSyncService {
     private final PlaceRepository placeRepository;
     private final TransactionTemplate neo4jTransactionTemplate;
 
-    // Transaction Neo4j explicite et independante de celle (JPA/Postgres) de l'appelant :
-    // Postgres et Neo4j sont deux bases distinctes sans atomicite reelle entre elles, donc
-    // partager la transaction ambiante n'apporte rien et faisait echouer les requetes
-    // derivees de Spring Data Neo4j (executees hors de tout contexte transactionnel Neo4j).
-    // Injection par TYPE (pas par nom de bean) : un seul Neo4jTransactionManager existe dans
-    // le contexte, donc Spring le resout sans ambiguite quel que soit son nom interne.
+    // Transaction Neo4j dediee, independante de la transaction JPA de l'appelant.
     public TravelGraphSyncService(PlaceRepository placeRepository, Neo4jTransactionManager neo4jTransactionManager) {
         this.placeRepository = placeRepository;
         this.neo4jTransactionTemplate = new TransactionTemplate(neo4jTransactionManager);
@@ -39,6 +34,8 @@ public class TravelGraphSyncService {
         }
     }
 
+    // tripCount = nombre de voyages utilisant ce trajet ; l'arete n'est supprimee que
+    // lorsqu'il tombe a 0 (elle peut etre partagee par plusieurs Travel).
     private void adjustRoute(String fromCity, String fromCountry, String toCity, String toCountry, int delta) {
         PlaceNode fromNode = findOrCreate(fromCity, fromCountry);
         PlaceNode toNode = findOrCreate(toCity, toCountry);

@@ -70,14 +70,10 @@ public class PaymentService {
         if (payment.getStatus() != PaymentStatus.SUCCEEDED) {
             throw new InvalidRefundException(id);
         }
-        // Le remboursement doit reellement etre notifie au fournisseur (Stripe/PayPal) : sans
-        // cet appel, seul le statut local changeait et l'argent restait effectivement pris.
-        // Si le fournisseur echoue, l'exception remonte avant tout changement d'etat local.
+        // Notifie reellement le fournisseur ; si ca echoue, aucun changement d'etat local.
         paymentProviderResolver.resolve(payment.getProvider()).refund(payment.getProviderReference());
         payment.setStatus(PaymentStatus.REFUNDED);
-        // saveAndFlush (pas save) : @PreUpdate ne s'execute qu'au flush Hibernate, differe
-        // normalement jusqu'au commit. Sans flush immediat, le updatedAt renvoye au client
-        // serait encore l'ancien.
+        // saveAndFlush : @PreUpdate ne s'execute qu'au flush, sinon updatedAt renvoye est perime.
         return paymentRepository.saveAndFlush(payment);
     }
 

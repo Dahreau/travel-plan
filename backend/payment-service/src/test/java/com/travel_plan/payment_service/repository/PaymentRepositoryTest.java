@@ -40,10 +40,7 @@ class PaymentRepositoryTest {
         UUID paymentId = payment.getId();
         UUID methodId = method.getId();
 
-        // Recharge le moyen de paiement depuis une session "propre" (aucune référence
-        // en mémoire vers le Payment) avant de le supprimer : sinon Hibernate refuse
-        // le delete en mémoire (TransientPropertyValueException) même si le SET NULL
-        // en base fonctionnerait très bien tout seul.
+        // Session propre requise avant le delete (sinon TransientPropertyValueException).
         PaymentMethod managedMethod = paymentMethodRepository.findById(methodId).orElseThrow();
         paymentMethodRepository.delete(managedMethod);
         entityManager.flush();

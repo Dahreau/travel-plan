@@ -59,9 +59,7 @@ public class PayPalPaymentProvider implements PaymentProvider {
 
         String status = String.valueOf(response.get("status"));
         PaymentStatus mappedStatus = "COMPLETED".equals(status) ? PaymentStatus.SUCCEEDED : PaymentStatus.FAILED;
-        // Un refund PayPal cible la capture (le prelevement reel), pas la commande : on
-        // stocke donc l'id de capture quand la commande est completee, avec repli sur l'id
-        // de commande si la structure attendue est absente (commande non capturee, etc.).
+        // Un refund cible la capture, pas la commande : on stocke l'id de capture si possible.
         String reference = mappedStatus == PaymentStatus.SUCCEEDED
                 ? extractCaptureId(response).orElse(String.valueOf(response.get("id")))
                 : String.valueOf(response.get("id"));
@@ -87,6 +85,8 @@ public class PayPalPaymentProvider implements PaymentProvider {
         }
     }
 
+    // Navigue purchase_units[0].payments.captures[0].id ; vide si la structure est absente
+    // (commande pas encore capturee), plutot que de faire planter tout le charge().
     @SuppressWarnings("unchecked")
     private Optional<String> extractCaptureId(Map<String, Object> response) {
         try {

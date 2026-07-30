@@ -67,9 +67,7 @@ public class TravelService {
         attachDestinations(travel, request.destinations());
         attachTransportations(travel, request.transportations());
 
-        // saveAndFlush (pas save) : @PreUpdate ne s'execute qu'au flush Hibernate, differe en
-        // temps normal jusqu'au commit. Sans flush immediat, la reponse renvoyee au client
-        // contiendrait encore l'ancien updatedAt le temps que la transaction se termine.
+        // saveAndFlush : @PreUpdate ne s'execute qu'au flush, sinon updatedAt renvoye est perime.
         Travel saved = travelRepository.saveAndFlush(travel);
 
         graphSyncService.removeRoute(oldRoute);

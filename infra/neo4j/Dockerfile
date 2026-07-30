@@ -1,9 +1,6 @@
 FROM neo4j:5.26
 
-# Meme raisonnement que infra/postgres/Dockerfile : la cle privee doit appartenir
-# a l'utilisateur neo4j avec des permissions restrictives (600), ce qu'un bind-mount
-# depuis un host Windows/WSL2 ne garantit jamais. On genere donc le certificat
-# auto-signe directement dans l'image, avec le bon chown/chmod.
+# Certificat genere au build (pas bind-mount) : permissions 600 fiables, meme raison que Postgres.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/* \
