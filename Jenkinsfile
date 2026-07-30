@@ -37,6 +37,9 @@ pipeline {
     environment {
         // Ryuk injoignable sous charge faisait planter les tests avant neo4j.
         TESTCONTAINERS_RYUK_DISABLED = 'true'
+        // Jenkins tourne dans un conteneur (docker.sock monte) : le port mappe de neo4j
+        // n'est pas joignable via 172.17.0.1, seulement via host.docker.internal.
+        TESTCONTAINERS_HOST_OVERRIDE = 'host.docker.internal'
     }
 
     stages {
