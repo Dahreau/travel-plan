@@ -4,6 +4,7 @@ import com.travel_plan.travel_service.graph.PlaceRepository;
 import com.travel_plan.travel_service.repository.TravelRepository;
 import javax.crypto.SecretKey;
 import org.junit.jupiter.api.Test;
+import org.neo4j.driver.Driver;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.data.neo4j.autoconfigure.DataNeo4jAutoConfiguration;
 import org.springframework.boot.data.neo4j.autoconfigure.DataNeo4jRepositoriesAutoConfiguration;
@@ -35,6 +36,9 @@ class TravelServiceApplicationTests {
 
 	@MockitoBean
 	private SecretKey jwtSigningKey;
+
+	@MockitoBean
+	private Driver driver;
 
 	@Test
 	void contextLoads() {

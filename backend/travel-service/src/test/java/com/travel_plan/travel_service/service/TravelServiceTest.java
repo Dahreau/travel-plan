@@ -67,7 +67,12 @@ class TravelServiceTest {
     @Test
     void findByIdReturnsTravelWhenPresent() {
         UUID id = UUID.randomUUID();
-        Travel travel = Travel.builder().id(id).title("Iberian tour").build();
+        Travel travel = Travel.builder()
+                .id(id)
+                .title("Iberian tour")
+                .startDate(LocalDate.of(2026, Month.SEPTEMBER, 1))
+                .endDate(LocalDate.of(2026, Month.SEPTEMBER, 8))
+                .build();
         when(travelRepository.findById(id)).thenReturn(Optional.of(travel));
 
         assertThat(travelService.findById(id)).isEqualTo(TravelResponse.from(travel));
@@ -126,7 +131,11 @@ class TravelServiceTest {
 
     @Test
     void findAllDelegatesToRepository() {
-        when(travelRepository.findAll()).thenReturn(List.of(Travel.builder().title("A").build()));
+        when(travelRepository.findAll()).thenReturn(List.of(Travel.builder()
+                .title("A")
+                .startDate(LocalDate.of(2026, Month.SEPTEMBER, 1))
+                .endDate(LocalDate.of(2026, Month.SEPTEMBER, 8))
+                .build()));
 
         assertThat(travelService.findAll()).hasSize(1);
     }
