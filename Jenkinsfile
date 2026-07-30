@@ -34,6 +34,11 @@ pipeline {
         disableConcurrentBuilds()
     }
 
+    environment {
+        // Ryuk injoignable sous charge faisait planter les tests avant neo4j.
+        TESTCONTAINERS_RYUK_DISABLED = 'true'
+    }
+
     stages {
         stage('Checkout') {
             steps {

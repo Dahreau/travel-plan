@@ -114,6 +114,10 @@ services:
     restart: unless-stopped
     deploy:
       replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     depends_on:
       postgres:
         condition: service_healthy
@@ -144,6 +148,10 @@ services:
     restart: unless-stopped
     deploy:
       replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     depends_on:
       postgres:
         condition: service_healthy
@@ -173,6 +181,10 @@ services:
     restart: unless-stopped
     deploy:
       replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     depends_on:
       postgres:
         condition: service_healthy
@@ -207,6 +219,10 @@ services:
     restart: unless-stopped
     deploy:
       replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     depends_on:
       postgres:
         condition: service_healthy
@@ -239,6 +255,10 @@ services:
     restart: unless-stopped
     deploy:
       replicas: 2
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     depends_on:
       vault-init:
         condition: service_completed_successfully
