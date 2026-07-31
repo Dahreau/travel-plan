@@ -1,6 +1,7 @@
 package com.travel_plan.payment_service.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -96,7 +97,7 @@ class PayPalPaymentProviderTest {
         stubOAuthToken("access-token-123");
         stubRefundCapture("capture-1", Map.of("id", "refund-1", "status", "COMPLETED"));
 
-        provider.refund("capture-1");
+        assertThatCode(() -> provider.refund("capture-1")).doesNotThrowAnyException();
     }
 
     @Test

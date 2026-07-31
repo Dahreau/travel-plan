@@ -1,6 +1,7 @@
 package com.travel_plan.payment_service.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -59,7 +60,7 @@ class StripePaymentProviderTest {
     void refundSucceedsWhenStripeConfirms() {
         stubStripeResponse(Map.of("id", "re_123", "status", "succeeded"));
 
-        provider.refund("pi_123");
+        assertThatCode(() -> provider.refund("pi_123")).doesNotThrowAnyException();
     }
 
     @Test
