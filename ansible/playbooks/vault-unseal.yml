@@ -146,6 +146,24 @@
               - "{{ (compose_config_raw.stdout | from_json).volumes.vault_data.name }}"
           changed_when: true
 
+        - name: Fix ownership of the fresh Vault data volume
+          ansible.builtin.command:
+            argv:
+              - docker
+              - compose
+              - --project-directory
+              - "{{ project_dir }}"
+              - run
+              - --rm
+              - --user
+              - root
+              - --entrypoint
+              - sh
+              - vault
+              - -c
+              - mkdir -p /vault/data && chown -R vault:vault /vault/data
+          changed_when: true
+
         - name: Restart Vault on the fresh volume
           ansible.builtin.command:
             argv:
@@ -178,7 +196,7 @@
           changed_when: false
           failed_when: false
 
-        - name: Re-parse Vault status after the reset (now reporting a fresh, uninitialized volume, so the normal init flow below runs exactly as on a first-ever deploy)
+        - name: Re-parse Vault status after the reset
           ansible.builtin.set_fact:
             vault_status: "{{ vault_status_raw.stdout | from_json }}"
 
