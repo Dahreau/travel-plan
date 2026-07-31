@@ -76,5 +76,7 @@ destinations/relations en graphe Neo4j). Détaillé dans sa propre page le
 moment venu.
 
 **HashiCorp Vault** n'a volontairement pas été ajouté dès la génération : le
-service refuserait de démarrer tant qu'un serveur Vault ne tourne pas — il
-sera branché une fois Vault lui-même construit.
+service refuserait de démarrer tant qu'un serveur Vault ne tourne pas. Vault
+a depuis été construit et durci (mode serveur réel, TLS, AppRole scopé par
+service — voir `02-app-infra.md` et `08-ansible-deploy-tls.md`), et les 5
+microservices y sont bien branchés.

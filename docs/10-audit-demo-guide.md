@@ -4,15 +4,16 @@
 
 Une entrée par question **littérale** de `travel-plan_audit.md` (même formulation, même découpage) : réponse courte, exemple ou manip à faire, puis un lien "plus de détails" seulement si nécessaire. Toutes les commandes ont été testées en direct sur cette stack, pas des exemples théoriques.
 
-Prérequis pour toute la section Functional : la stack tourne (`docker compose ps` → tout `Healthy`) et un token admin est en variable d'env :
+Prérequis pour toute la section Functional : la stack tourne (`docker compose ps` → tout `Healthy`) et un token admin est en variable d'env. La commande ci-dessous va lire le vrai mot de passe directement dans `.env`, aucune édition manuelle nécessaire :
 
 ```bash
 TOKEN=$(curl -k -s -X POST https://localhost/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"changeme_dev_only"}' | jq -r .token)
+  -d "{\"username\":\"admin\",\"password\":\"$(grep -m1 '^DEFAULT_ADMIN_PASSWORD=' .env | cut -d= -f2-)\"}" \
+  | jq -r .token)
 ```
 
-(remplacer `changeme_dev_only` par le vrai mot de passe admin — voir `.env`)
+Pour ne pas avoir à taper les exemples CRUD ci-dessous en direct pendant l'oral, `./scripts/seed-demo-data.sh` peuple la stack en une commande (3 users, 2 travels avec destinations/activités/hébergement/transport, 2 payment methods) via les vraies APIs — donc Neo4j est aussi peuplé au passage. À lancer une fois avant l'audit, pas pendant (pas idempotent : un deuxième lancement échoue sur des emails déjà pris).
 
 ---
 
@@ -47,15 +48,16 @@ TOKEN=$(curl -k -s -X POST https://localhost/api/auth/login \
 **Were comprehensive security measures like SSL/TLS, secret management, and the principle of least privilege correctly implemented?**
 
 Court : oui, sur les 3 axes.
-- **TLS** : client→nginx, nginx→api-gateway (cert vérifié), api-gateway→les 4 services, services→Postgres (`sslmode=require`), travel-service→Neo4j (`bolt+ssc://`), tout→Vault. Tout le trafic interne est chiffré.
-- **Secrets** : HashiCorp Vault, AppRole scopé par service (chaque service ne peut lire que ses propres secrets), aucun secret en dur dans le code ou les images.
+- **TLS** : client→nginx, nginx→api-gateway (cert vérifié), api-gateway→les 4 services, services→Postgres (`sslmode=require`), travel-service→Neo4j (`bolt+ssc://`), tout→Vault. Tout le trafic interne est chiffré, aucun hop en clair.
+- **Secrets** : HashiCorp Vault en mode serveur réel (storage `file` persistant, TLS, plus le mode dev des premières branches), AppRole scopé par service — chaque service a son propre couple `role_id`/`secret_id`, lié à une policy qui ne l'autorise à lire (`capabilities = ["read"]`, jamais `write`/`delete`) que son propre chemin `secret/data/<service>/*` (`infra/vault/policies/<service>-policy.hcl`, un fichier par service). Aucun secret en dur dans le code ou les images ; le `secret_id` de chaque service est révoqué et régénéré à chaque déploiement (`ansible/playbooks/fetch-vault-secrets.yml`).
 - **Moindre privilège** : RBAC `hasRole("ADMIN")` sur toutes les routes métier des 4 services (seul `/api/auth/login` est public).
 
 ```bash
 grep -r "hasRole" backend/*/src/main/java --include=SecurityConfig.java
+cat infra/vault/policies/user-service-policy.hcl   # exemple de policy scopée à un seul service
 ```
 
-Plus de détails → `08-ansible-deploy-tls.md` (TLS), `03-security-vault.md` (Vault/AppRole).
+Plus de détails → `08-ansible-deploy-tls.md` (TLS + pourquoi Vault ne tourne plus en mode dev).
 
 ### "Ask the student to explain the database schema for PostgreSQL and Neo4j."
 
@@ -73,7 +75,7 @@ Plus de détails → `02-app-infra.md`, fichiers `db/migration/V1__*.sql` de cha
 
 ```bash
 cd ansible
-ansible-playbook -i inventory playbooks/site.yml
+ansible-playbook -i inventory.ini playbooks/site.yml
 ```
 
 **Did the Ansible playbooks execute without errors and configure the environment as intended?** → `PLAY RECAP` final : `failed=0` partout.
@@ -175,7 +177,7 @@ curl -k -s -w "\nHTTP: %{http_code}\n" -X DELETE https://localhost/api/payment-m
 curl -k -s https://localhost/api/payments/$PAYMENT_ID -H "Authorization: Bearer $TOKEN"   # paymentMethodId doit être null, le reste intact
 ```
 
-`pm_card_visa` est l'ID de test permanent de Stripe (mode test uniquement, aucune vraie carte). PayPal fonctionne différemment (nécessite un vrai flux de consentement sandbox) — voir `07-payment-service.md`.
+`pm_card_visa` est l'ID de test permanent de Stripe (mode test uniquement, aucune vraie carte). PayPal fonctionne différemment : pas de token de test statique équivalent — il faut créer un ordre puis le faire approuver par un compte sandbox buyer via le flux OAuth PayPal, plus long à dérouler en direct. Pour l'oral : mentionner que l'intégration existe et est testée (`PayPalPaymentProvider.java`, `PayPalPaymentProviderTest.java`, même interface `PaymentProvider` que Stripe) sans forcément l'exécuter en live — le refund Stripe ci-dessus suffit à prouver que l'appel provider réel a lieu (visible dans le dashboard Stripe test mode, pas juste en local).
 </details>
 
 **Is everything working as expected? / Are errors handled correctly?**
