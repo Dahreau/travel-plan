@@ -85,9 +85,32 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh '''
+                    set -e
                     DEPLOY_DIR="$HOST_REPO_PATH/infra/ci/deploy-workspace"
+                    STATE_DIR="$HOST_REPO_PATH/infra/ci/persistent-state"
+
+                    # Fichiers gitignores (secrets Vault, certs) : sauvegardes hors de
+                    # DEPLOY_DIR avant le rm -rf, restaures apres, pour survivre aux builds.
+                    STATE_FILES=".env infra/vault/.unseal-key.txt infra/vault/certs/vault.crt infra/vault/certs/vault.key infra/nginx/certs/travel-plan.crt infra/nginx/certs/travel-plan.key infra/internal-tls/certs/internal.crt infra/internal-tls/certs/internal.key"
+
+                    mkdir -p "$STATE_DIR"
+                    for f in $STATE_FILES; do
+                        if [ -f "$DEPLOY_DIR/$f" ]; then
+                            mkdir -p "$STATE_DIR/$(dirname "$f")"
+                            mv "$DEPLOY_DIR/$f" "$STATE_DIR/$f"
+                        fi
+                    done
+
                     rm -rf "$DEPLOY_DIR"/*
                     tar --exclude=.git --exclude=node_modules --exclude=target --exclude=dist --exclude=.angular -C "$WORKSPACE" -cf - . | tar -C "$DEPLOY_DIR" -xf -
+
+                    for f in $STATE_FILES; do
+                        if [ -f "$STATE_DIR/$f" ]; then
+                            mkdir -p "$DEPLOY_DIR/$(dirname "$f")"
+                            cp "$STATE_DIR/$f" "$DEPLOY_DIR/$f"
+                        fi
+                    done
+
                     cd ansible
                     ansible-galaxy collection install -r requirements.yml
                     ansible-playbook -i inventory.ini playbooks/site.yml -e project_dir="$DEPLOY_DIR"

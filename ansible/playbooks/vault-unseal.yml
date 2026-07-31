@@ -101,6 +101,87 @@
       ansible.builtin.set_fact:
         vault_status: "{{ vault_status_raw.stdout | from_json }}"
 
+    - name: Check whether a usable unseal key is stored on disk
+      ansible.builtin.stat:
+        path: "{{ unseal_key_file }}"
+      register: unseal_key_stat
+
+    - name: Self-heal - Vault initialized but unseal key missing (data is disposable, cf. bootstrap.sh)
+      when:
+        - vault_status.initialized | default(false)
+        - not unseal_key_stat.stat.exists
+      block:
+        - name: Stop and remove the Vault container
+          ansible.builtin.command:
+            argv:
+              - docker
+              - compose
+              - --project-directory
+              - "{{ project_dir }}"
+              - rm
+              - -f
+              - -s
+              - vault
+          changed_when: true
+
+        - name: Resolve the real vault_data volume name (never hardcoded)
+          ansible.builtin.command:
+            argv:
+              - docker
+              - compose
+              - --project-directory
+              - "{{ project_dir }}"
+              - config
+              - --format
+              - json
+          register: compose_config_raw
+          changed_when: false
+
+        - name: Remove Vault's data volume so it reinitializes clean
+          ansible.builtin.command:
+            argv:
+              - docker
+              - volume
+              - rm
+              - "{{ (compose_config_raw.stdout | from_json).volumes.vault_data.name }}"
+          changed_when: true
+
+        - name: Restart Vault on the fresh volume
+          ansible.builtin.command:
+            argv:
+              - docker
+              - compose
+              - --project-directory
+              - "{{ project_dir }}"
+              - up
+              - -d
+              - vault
+          changed_when: true
+
+        - name: Wait for the Vault CLI to respond after the reset
+          ansible.builtin.command:
+            argv:
+              - docker
+              - compose
+              - --project-directory
+              - "{{ project_dir }}"
+              - exec
+              - -T
+              - vault
+              - vault
+              - status
+              - -format=json
+          register: vault_status_raw
+          until: vault_status_raw.rc in [0, 2]
+          retries: 20
+          delay: 3
+          changed_when: false
+          failed_when: false
+
+        - name: Re-parse Vault status after the reset (now reporting a fresh, uninitialized volume, so the normal init flow below runs exactly as on a first-ever deploy)
+          ansible.builtin.set_fact:
+            vault_status: "{{ vault_status_raw.stdout | from_json }}"
+
     - name: Initialize Vault (first run only — single key share, justified for a single-operator/demo deployment, not a multi-party production cluster)
       ansible.builtin.command:
         argv:
