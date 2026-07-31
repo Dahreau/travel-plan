@@ -110,7 +110,7 @@
       changed_when: "'Removing' in vault_init_rm.stdout"
       failed_when: false
 
-    - name: Force-remove postgres and neo4j before recreate (same host-port release race as vault-init, they're the only other services publishing ports)
+    - name: Force-remove postgres, neo4j and nginx before recreate (same host-port/bind-mount release race as vault-init, they're the other services publishing ports)
       ansible.builtin.command:
         argv:
           - docker
@@ -122,6 +122,7 @@
           - -s
           - postgres
           - neo4j
+          - nginx
       register: db_containers_rm
       changed_when: "'Removing' in db_containers_rm.stdout"
       failed_when: false
