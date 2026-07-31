@@ -28,6 +28,10 @@ def sonarFrontend() {
 pipeline {
     agent any
 
+    parameters {
+        booleanParam(name: 'SKIP_BUILD_TEST', defaultValue: false, description: 'Skip Build & Test + SonarQube (deploy-only iteration). Forces the build result to FAILURE.')
+    }
+
     options {
         timestamps()
         ansiColor('xterm')
@@ -65,6 +69,7 @@ pipeline {
         }
 
         stage('Build & Test') {
+            when { expression { !params.SKIP_BUILD_TEST } }
             steps {
                 script {
                     SERVICES.each { svc -> buildService(svc) }
@@ -74,6 +79,7 @@ pipeline {
         }
 
         stage('SonarQube Analysis & Quality Gate') {
+            when { expression { !params.SKIP_BUILD_TEST } }
             steps {
                 script {
                     SERVICES.each { svc -> sonarService(svc) }
@@ -115,6 +121,17 @@ pipeline {
                     ansible-galaxy collection install -r requirements.yml
                     ansible-playbook -i inventory.ini playbooks/site.yml -e project_dir="$DEPLOY_DIR"
                 '''
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                if (params.SKIP_BUILD_TEST) {
+                    currentBuild.result = 'FAILURE'
+                    currentBuild.description = 'Debug run (Build/Test/Sonar skipped) — forced FAILURE, not a real gate result.'
+                }
             }
         }
     }
