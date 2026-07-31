@@ -12,8 +12,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 @Configuration
 public class Neo4jTransactionConfig {
 
-    // Neo4jTransactionManager desactive l'auto-config du transactionManager JPA ;
-    // on le redeclare en @Primary pour ne pas casser les @Transactional existants.
+    // Neo4jTransactionManager desactive l'auto-config du transactionManager JPA,
+    // donc on le redeclare en @Primary pour ne pas casser les @Transactional existants.
     @Bean
     @Primary
     public PlatformTransactionManager transactionManager(EntityManagerFactory entityManagerFactory) {

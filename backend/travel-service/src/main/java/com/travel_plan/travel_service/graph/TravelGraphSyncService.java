@@ -34,7 +34,7 @@ public class TravelGraphSyncService {
         }
     }
 
-    // tripCount = nombre de voyages utilisant ce trajet ; l'arete n'est supprimee que
+    // tripCount represente le nombre de voyages utilisant ce trajet, l'arete n'est supprimee que
     // lorsqu'il tombe a 0 (elle peut etre partagee par plusieurs Travel).
     private void adjustRoute(String fromCity, String fromCountry, String toCity, String toCountry, int delta) {
         PlaceNode fromNode = findOrCreate(fromCity, fromCountry);

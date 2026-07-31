@@ -70,7 +70,7 @@ public class PaymentService {
         if (payment.getStatus() != PaymentStatus.SUCCEEDED) {
             throw new InvalidRefundException(id);
         }
-        // Notifie reellement le fournisseur ; si ca echoue, aucun changement d'etat local.
+        // Notifie reellement le fournisseur, si ca echoue, aucun changement d'etat local.
         paymentProviderResolver.resolve(payment.getProvider()).refund(payment.getProviderReference());
         payment.setStatus(PaymentStatus.REFUNDED);
         // saveAndFlush : @PreUpdate ne s'execute qu'au flush, sinon updatedAt renvoye est perime.

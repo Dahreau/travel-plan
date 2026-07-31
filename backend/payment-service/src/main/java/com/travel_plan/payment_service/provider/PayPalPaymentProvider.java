@@ -85,8 +85,8 @@ public class PayPalPaymentProvider implements PaymentProvider {
         }
     }
 
-    // Navigue purchase_units[0].payments.captures[0].id ; vide si la structure est absente
-    // (commande pas encore capturee), plutot que de faire planter tout le charge().
+    // Cherche l'id dans purchase_units/payments/captures, vide si la structure est absente
+    // (commande pas encore capturee), plutot que de faire planter tout le paiement.
     @SuppressWarnings("unchecked")
     private Optional<String> extractCaptureId(Map<String, Object> response) {
         try {
