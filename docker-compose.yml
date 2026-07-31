@@ -25,7 +25,8 @@ services:
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
       # 127.0.0.1 (pas 0.0.0.0) : accessible depuis DBeaver en local, pas depuis le reseau/internet.
-      - "127.0.0.1:5433:5432"
+      # 5434 (pas 5433) : le port 5433 est deja pris en permanence par un autre conteneur local (main_local_db).
+      - "127.0.0.1:5434:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
