@@ -10,12 +10,21 @@ import static org.mockito.Mockito.when;
 import com.travel_plan.travel_service.domain.Destination;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.neo4j.core.transaction.Neo4jTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 class TravelGraphSyncServiceTest {
 
     private final PlaceRepository placeRepository = mock(PlaceRepository.class);
-    private final TravelGraphSyncService service = new TravelGraphSyncService(placeRepository);
+    private final Neo4jTransactionManager neo4jTransactionManager = mock(Neo4jTransactionManager.class);
+    private final TravelGraphSyncService service = new TravelGraphSyncService(placeRepository, neo4jTransactionManager);
+
+    @BeforeEach
+    void stubTransactionManager() {
+        when(neo4jTransactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
+    }
 
     @Test
     void recordRouteCreatesPlacesAndRouteRelationshipForNewDestinations() {

@@ -20,6 +20,7 @@ import com.travel_plan.travel_service.web.ActivityRequest;
 import com.travel_plan.travel_service.web.DestinationRequest;
 import com.travel_plan.travel_service.web.TransportationRequest;
 import com.travel_plan.travel_service.web.TravelRequest;
+import com.travel_plan.travel_service.web.TravelResponse;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -41,14 +42,14 @@ class TravelServiceTest {
     void createBuildsFullTravelGraphAndRecordsRoute() {
         when(travelRepository.save(any(Travel.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Travel saved = travelService.create(fullRequest());
+        TravelResponse saved = travelService.create(fullRequest());
 
-        assertThat(saved.getTitle()).isEqualTo("Iberian tour");
-        assertThat(saved.getDestinations()).hasSize(2);
-        assertThat(saved.getDestinations().get(0).getActivities()).hasSize(1);
-        assertThat(saved.getDestinations().get(0).getAccommodation()).isNotNull();
-        assertThat(saved.getDestinations().get(1).getAccommodation()).isNull();
-        assertThat(saved.getTransportations()).hasSize(1);
+        assertThat(saved.title()).isEqualTo("Iberian tour");
+        assertThat(saved.destinations()).hasSize(2);
+        assertThat(saved.destinations().get(0).activities()).hasSize(1);
+        assertThat(saved.destinations().get(0).accommodation()).isNotNull();
+        assertThat(saved.destinations().get(1).accommodation()).isNull();
+        assertThat(saved.transportations()).hasSize(1);
 
         ArgumentCaptor<List<Destination>> captor = ArgumentCaptor.forClass(List.class);
         verify(graphSyncService).recordRoute(captor.capture());
@@ -66,10 +67,15 @@ class TravelServiceTest {
     @Test
     void findByIdReturnsTravelWhenPresent() {
         UUID id = UUID.randomUUID();
-        Travel travel = Travel.builder().id(id).title("Iberian tour").build();
+        Travel travel = Travel.builder()
+                .id(id)
+                .title("Iberian tour")
+                .startDate(LocalDate.of(2026, Month.SEPTEMBER, 1))
+                .endDate(LocalDate.of(2026, Month.SEPTEMBER, 8))
+                .build();
         when(travelRepository.findById(id)).thenReturn(Optional.of(travel));
 
-        assertThat(travelService.findById(id)).isEqualTo(travel);
+        assertThat(travelService.findById(id)).isEqualTo(TravelResponse.from(travel));
     }
 
     @Test
@@ -94,12 +100,12 @@ class TravelServiceTest {
         existing.getDestinations().add(oldDestination);
 
         when(travelRepository.findById(id)).thenReturn(Optional.of(existing));
-        when(travelRepository.save(any(Travel.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(travelRepository.saveAndFlush(any(Travel.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Travel updated = travelService.update(id, fullRequest());
+        TravelResponse updated = travelService.update(id, fullRequest());
 
-        assertThat(updated.getTitle()).isEqualTo("Iberian tour");
-        assertThat(updated.getDestinations()).hasSize(2);
+        assertThat(updated.title()).isEqualTo("Iberian tour");
+        assertThat(updated.destinations()).hasSize(2);
         verify(graphSyncService).removeRoute(List.of(oldDestination));
     }
 
@@ -125,7 +131,11 @@ class TravelServiceTest {
 
     @Test
     void findAllDelegatesToRepository() {
-        when(travelRepository.findAll()).thenReturn(List.of(Travel.builder().title("A").build()));
+        when(travelRepository.findAll()).thenReturn(List.of(Travel.builder()
+                .title("A")
+                .startDate(LocalDate.of(2026, Month.SEPTEMBER, 1))
+                .endDate(LocalDate.of(2026, Month.SEPTEMBER, 8))
+                .build()));
 
         assertThat(travelService.findAll()).hasSize(1);
     }

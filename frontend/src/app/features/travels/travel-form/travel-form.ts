@@ -228,6 +228,7 @@ export class TravelForm implements OnInit {
   protected submit(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      this.toastService.error('Certains champs sont manquants ou invalides (vérifiez les dates).');
       return;
     }
 

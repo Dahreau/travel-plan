@@ -13,6 +13,7 @@ import com.travel_plan.travel_service.web.ActivityRequest;
 import com.travel_plan.travel_service.web.DestinationRequest;
 import com.travel_plan.travel_service.web.TransportationRequest;
 import com.travel_plan.travel_service.web.TravelRequest;
+import com.travel_plan.travel_service.web.TravelResponse;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -28,15 +29,15 @@ public class TravelService {
     private final TravelRepository travelRepository;
     private final TravelGraphSyncService graphSyncService;
 
-    public List<Travel> findAll() {
-        return travelRepository.findAll();
+    public List<TravelResponse> findAll() {
+        return travelRepository.findAll().stream().map(TravelResponse::from).toList();
     }
 
-    public Travel findById(UUID id) {
-        return getOrThrow(id);
+    public TravelResponse findById(UUID id) {
+        return TravelResponse.from(getOrThrow(id));
     }
 
-    public Travel create(TravelRequest request) {
+    public TravelResponse create(TravelRequest request) {
         Travel travel = Travel.builder()
                 .title(request.title())
                 .ownerId(request.ownerId())
@@ -50,10 +51,10 @@ public class TravelService {
 
         Travel saved = travelRepository.save(travel);
         graphSyncService.recordRoute(orderedDestinations(saved));
-        return saved;
+        return TravelResponse.from(saved);
     }
 
-    public Travel update(UUID id, TravelRequest request) {
+    public TravelResponse update(UUID id, TravelRequest request) {
         Travel travel = getOrThrow(id);
         List<Destination> oldRoute = orderedDestinations(travel);
 
@@ -66,11 +67,12 @@ public class TravelService {
         attachDestinations(travel, request.destinations());
         attachTransportations(travel, request.transportations());
 
-        Travel saved = travelRepository.save(travel);
+        // saveAndFlush : @PreUpdate ne s'execute qu'au flush, sinon updatedAt renvoye est perime.
+        Travel saved = travelRepository.saveAndFlush(travel);
 
         graphSyncService.removeRoute(oldRoute);
         graphSyncService.recordRoute(orderedDestinations(saved));
-        return saved;
+        return TravelResponse.from(saved);
     }
 
     public void delete(UUID id) {

@@ -1,6 +1,7 @@
 package com.travel_plan.user_service.web;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -12,11 +13,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.travel_plan.user_service.domain.Role;
-import com.travel_plan.user_service.domain.User;
 import com.travel_plan.user_service.exception.ApiExceptionHandler;
-import com.travel_plan.user_service.repository.UserRepository;
+import com.travel_plan.user_service.exception.UserNotFoundException;
+import com.travel_plan.user_service.service.UserService;
+import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,14 +28,14 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class UserControllerTest {
 
-    private UserRepository userRepository;
+    private UserService userService;
     private MockMvc mockMvc;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
-        userRepository = mock(UserRepository.class);
-        UserController controller = new UserController(userRepository);
+        userService = mock(UserService.class);
+        UserController controller = new UserController(userService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
@@ -42,7 +43,7 @@ class UserControllerTest {
 
     @Test
     void findAllReturnsAllUsers() throws Exception {
-        when(userRepository.findAll()).thenReturn(List.of(newUser("ada@travel-plan.com")));
+        when(userService.findAll()).thenReturn(List.of(newUserResponse("ada@travel-plan.com")));
 
         mockMvc.perform(get("/api/users"))
                 .andExpect(status().isOk())
@@ -52,14 +53,14 @@ class UserControllerTest {
     @Test
     void findByIdReturns404WhenMissing() throws Exception {
         UUID id = UUID.randomUUID();
-        when(userRepository.findById(id)).thenReturn(Optional.empty());
+        when(userService.findById(id)).thenThrow(new UserNotFoundException(id));
 
         mockMvc.perform(get("/api/users/{id}", id)).andExpect(status().isNotFound());
     }
 
     @Test
     void createReturns201ForValidRequest() throws Exception {
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userService.create(any(UserRequest.class))).thenReturn(newUserResponse("ada@travel-plan.com"));
 
         UserRequest request = new UserRequest("Ada", "Lovelace", "ada@travel-plan.com", null, Role.TRAVELER, null);
 
@@ -82,7 +83,8 @@ class UserControllerTest {
 
     @Test
     void createReturns409WhenEmailAlreadyExists() throws Exception {
-        when(userRepository.save(any(User.class))).thenThrow(new DataIntegrityViolationException("duplicate email"));
+        when(userService.create(any(UserRequest.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate email"));
 
         UserRequest request = new UserRequest("Ada", "Lovelace", "ada@travel-plan.com", null, Role.TRAVELER, null);
 
@@ -93,11 +95,30 @@ class UserControllerTest {
     }
 
     @Test
+    void createReturns400ForMalformedJson() throws Exception {
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{not-json"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createReturns500ForUnexpectedException() throws Exception {
+        when(userService.create(any(UserRequest.class))).thenThrow(new IllegalStateException("boom"));
+
+        UserRequest request = new UserRequest("Ada", "Lovelace", "ada@travel-plan.com", null, Role.TRAVELER, null);
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isInternalServerError());
+    }
+
+    @Test
     void updateReplacesUserFields() throws Exception {
         UUID id = UUID.randomUUID();
-        User existing = newUser("ada@travel-plan.com");
-        when(userRepository.findById(id)).thenReturn(Optional.of(existing));
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userService.update(any(UUID.class), any(UserRequest.class)))
+                .thenReturn(newUserResponse("ada.byron@travel-plan.com", "Byron"));
 
         UserRequest request =
                 new UserRequest("Ada", "Byron", "ada.byron@travel-plan.com", "0102030405", Role.TRAVELER, null);
@@ -112,7 +133,7 @@ class UserControllerTest {
     @Test
     void updateReturns404WhenUserMissing() throws Exception {
         UUID id = UUID.randomUUID();
-        when(userRepository.findById(id)).thenReturn(Optional.empty());
+        when(userService.update(any(UUID.class), any(UserRequest.class))).thenThrow(new UserNotFoundException(id));
 
         UserRequest request = new UserRequest("Ada", "Lovelace", "ada@travel-plan.com", null, Role.TRAVELER, null);
 
@@ -125,7 +146,6 @@ class UserControllerTest {
     @Test
     void deleteRemovesExistingUser() throws Exception {
         UUID id = UUID.randomUUID();
-        when(userRepository.findById(id)).thenReturn(Optional.of(newUser("ada@travel-plan.com")));
 
         mockMvc.perform(delete("/api/users/{id}", id)).andExpect(status().isNoContent());
     }
@@ -133,18 +153,17 @@ class UserControllerTest {
     @Test
     void deleteReturns404WhenUserMissing() throws Exception {
         UUID id = UUID.randomUUID();
-        when(userRepository.findById(id)).thenReturn(Optional.empty());
+        doThrow(new UserNotFoundException(id)).when(userService).delete(id);
 
         mockMvc.perform(delete("/api/users/{id}", id)).andExpect(status().isNotFound());
     }
 
-    private User newUser(String email) {
-        return User.builder()
-                .id(UUID.randomUUID())
-                .firstName("Ada")
-                .lastName("Lovelace")
-                .email(email)
-                .role(Role.TRAVELER)
-                .build();
+    private UserResponse newUserResponse(String email) {
+        return newUserResponse(email, "Lovelace");
+    }
+
+    private UserResponse newUserResponse(String email, String lastName) {
+        return new UserResponse(
+                UUID.randomUUID(), "Ada", lastName, email, null, Role.TRAVELER, null, Instant.now(), Instant.now());
     }
 }

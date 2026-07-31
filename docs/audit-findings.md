@@ -1,74 +1,77 @@
-# Audit findings — état du backend/infra au 2026-07-29
+# Audit findings — état du backend/infra au 2026-07-30
 
 [← Sommaire](00-getting-started.md)
 
-Revue complète du code contre la grille d'audit officielle (`travel-plan_audit.md`). Périmètre : backend, infra, CI/CD, sécurité, tests, git. **Le frontend (Admin Dashboard) est hors périmètre** — géré par un autre contributeur.
+Revue complète du code contre la grille d'audit officielle (`travel-plan_audit.md`), refaite avec un regard neuf le 30/07 sur `fix/audit-hardening` — objectif : que cette branche soit la **dernière PR avant le merge final**, tous les points validés.
 
-Légende : ✅ solide, prêt pour l'audit — ⚠️ vrai écart, à corriger ou à savoir justifier à l'oral.
+Légende : ✅ vérifié aujourd'hui, prêt pour l'audit — ⚠️ vrai écart restant, à corriger ou à savoir justifier à l'oral.
 
-## À corriger avant l'audit (par priorité)
+## Ce qui était ouvert hier (2026-07-29) et est maintenant vérifié fermé
 
-### ⚠️ 1. Trafic interne non chiffré
+| Point | Vérifié comment |
+|---|---|
+| Postgres/Neo4j/Vault/Zipkin exposés sur l'host | `docker-compose.yml` : plus aucun `ports:` sur ces 4 services, seul `nginx` publie encore |
+| `auth-service` en `.authenticated()` au lieu de `.hasRole("ADMIN")` | Les 4 `SecurityConfig.java` (auth/user/travel/payment) disent tous `.anyRequest().hasRole("ADMIN")` — grep fait sur les 4 fichiers |
+| `secret_id` Vault jamais révoqué | `fetch-vault-secrets.yml` détruit l'ancien (`/secret-id/destroy`, tolérant sur 400/404) avant d'en émettre un nouveau |
+| 3 trous de tests (`JwtService`, `PaymentMethodRepository`, `PlaceRepository`) | Les 3 fichiers de test existent et sont substantiels (ex. `PlaceRepositoryTest` tourne contre un vrai Neo4j via Testcontainers, pas un mock) |
+| `nginx`/`zipkin` sans healthcheck | Les deux ont un healthcheck dans `docker-compose.yml` |
 
-L'audit demande explicitement "SSL/TLS pour **toutes** les données en transit". Aujourd'hui, seul le hop client→nginx est chiffré. Tout le reste tourne en clair à l'intérieur du réseau Docker :
+## Corrigé ce soir (30/07, deuxième passe)
 
-- `nginx → api-gateway` : `http://` (`infra/nginx/nginx.conf:17`)
-- `api-gateway → auth/user/travel/payment-service` : `http://` (`docker-compose.yml:222-225`)
-- chaque service `→ Postgres` : JDBC sans `ssl=true`
-- `travel-service → Neo4j` : `bolt://` (pas `bolt+s://`)
-- chaque service `→ Vault` : `http://vault:8200`
-- chaque service `→ Zipkin` : `http://zipkin:9411`
+| Point | Fix |
+|---|---|
+| Vault en mode dev | Mode serveur réel : storage `file` persistant, listener TLS (cert auto-signé), init/unseal réel via `ansible/playbooks/vault-unseal.yml` (une seule part de clé — justifié, un seul opérateur/pipeline gère tout le cycle de vie, pas une vraie organisation multi-personnes). Root token régénéré à froid et écrit dans `.env`, plus jamais un token fixe en dur. |
+| `sonar-maven-plugin` sans version explicite | Épinglé (`:5.7.0.6970:sonar`) dans le `Jenkinsfile` — le warning "unspecified plugin version" ne devrait plus apparaître. |
+| `docs/01-ci-cd.md` obsolète | Réécrit : Jenkins a bien accès à Docker (`docker.sock`), le stage Deploy est décrit tel qu'il tourne réellement, mention de `cleanWs()`. |
+| Trafic Vault en clair | `vault:8200` en HTTPS (cert auto-signé) ; les 5 `VaultClient.java` font confiance à ce certificat précis (même compromis que Nginx) ; `fetch-vault-secrets.yml`/`vault-unseal.yml` passent par `docker compose exec` (pas d'appel HTTP externe, cohérent avec le port non publié). |
+| Clé privée Nginx commitée dans Git | `.gitignore` corrigé (les lignes qui l'ignoraient étaient en commentaire) — **action manuelle requise**, voir plus bas. |
 
-**Justification actuelle possible à l'oral** : isolation réseau Docker (bridge dédié, aucun de ces flux ne sort du host). **Mais** ça ne satisfait pas littéralement la formulation de l'énoncé — à trancher : soit l'assumer et le justifier clairement, soit chiffrer au moins Postgres/Neo4j (`sslmode=require` / `bolt+s://`) si le temps le permet.
+## Corrigé ce soir (30/07, quatrième passe — TLS interne complet + refund réel)
 
-### ⚠️ 2. Bases de données et infra exposées sur l'host
+| Point | Fix |
+|---|---|
+| Trafic interne en clair (`Postgres`, `Neo4j`, `api-gateway→services`, `nginx→api-gateway`) | Les 4 derniers hops sont maintenant chiffrés : Postgres (`sslmode=require`, cert genere au build de `infra/postgres/Dockerfile`), Neo4j (`bolt+ssc://`, meme principe dans `infra/neo4j/Dockerfile`), `api-gateway↔auth/user/travel/payment-service` (certificat interne partage `infra/internal-tls/`, importe dans le keystore JVM d'api-gateway au build — Spring Cloud Gateway Server MVC ignore `spring.http.client.ssl.bundle` pour son client HTTP interne, verifie empiriquement), `nginx→api-gateway` (`proxy_ssl_verify on` avec le meme certificat, SAN couvrant `api-gateway` et chaque conteneur de replica). Verifie en direct : login + creation d'un travel 2 destinations + lecture payments/payment-methods, logs nginx/api-gateway/travel-service propres (aucune erreur SSL). |
+| Refund ne notifiait jamais Stripe/PayPal (seul le statut local changeait) | `PaymentProvider` n'avait qu'une methode `charge()`, pas de `refund()`. Ajoute des deux cotes (Stripe `POST /v1/refunds`, PayPal `POST /v2/payments/captures/{id}/refund` — necessite de stocker l'id de capture, pas l'id de commande, cote PayPal). `PaymentService.refund()` appelle desormais le provider avant de changer le statut local ; si le provider refuse, l'exception remonte avant tout changement d'etat. |
+| Healthcheck Nginx `unhealthy` en permanence | `wget` resolvait `localhost` en IPv6 en premier alors que nginx n'ecoute qu'en IPv4 — healthcheck pointe maintenant sur `127.0.0.1` explicitement. |
+| `docker compose up` echouait a demarrer travel-service/api-gateway/nginx apres l'activation TLS sur Neo4j | Le policy SSL bolt allonge le temps de boot de Neo4j au-dela du budget du healthcheck (5×10s) ; retries porte a 12. |
 
-`docker-compose.yml` publie directement sur l'host : Postgres (`5432`), Neo4j (`7474`/`7687`), **Vault (`8200`, en mode dev donc déverrouillé avec un root token)**, Zipkin (`9411`). L'énoncé exige que "les bases et services soient accessibles uniquement depuis le réseau interne ou via un endpoint sécurisé et authentifié". Ce n'est pas le cas — n'importe quel process sur la machine hôte peut s'y connecter directement, en contournant complètement nginx/api-gateway.
+## ⚠️ Encore ouvert — à trancher avant de considérer la branche finale
 
-**Fix simple** : retirer les `ports:` de `postgres`, `neo4j`, `vault`, `zipkin` dans `docker-compose.yml` (garder les mappings uniquement dans un fichier d'override séparé pour le debug local, jamais dans la version "prod"). C'est le correctif le plus rapide à faire de toute cette liste.
+### 1. Nœuds Neo4j jamais supprimés (seulement les relations) — à justifier, pas à corriger
 
-### ⚠️ 3. `auth-service` : une route en `.authenticated()` au lieu de `.hasRole("ADMIN")`
+Supprimer un `Travel` supprime la relation `ROUTE_TO` mais garde le `PlaceNode` (ville). Comportement probablement correct (une ville est une référence partagée entre voyages) mais l'énoncé insiste sur "cascade entre PostgreSQL et Neo4j" — prépare la justification orale plutôt que de laisser croire à un oubli. **Décision (30/07) : pas un bug, ne pas changer.**
 
-`auth-service/.../SecurityConfig.java:32` autorise tout utilisateur authentifié, alors que `user-service`, `travel-service`, `payment-service` exigent tous les trois `.hasRole("ADMIN")`. Fonctionnellement équivalent aujourd'hui (le `Role` enum d'auth-service n'a qu'une seule valeur, `ADMIN`), mais littéralement, `GET /api/auth/me` n'est pas explicitement admin-only — l'audit pose la question précise "est-ce que TOUTES les APIs sont admin-only ?". À aligner (`hasRole("ADMIN")` partout) pour ne pas avoir à improviser une explication le jour J.
+### 2. Clé privée Nginx déjà commitée dans l'historique Git
 
-### ⚠️ 4. Vault : `secret_id` jamais révoqué
+`infra/nginx/certs/travel-plan.crt`/`.key` ont été trackés dans un commit passé avant d'être retirés du répertoire de travail (`.gitignore` corrigé). Le fichier n'existe plus aujourd'hui, seul l'historique Git le garde encore. **Décision (30/07) : pas d'action — certificat de dev auto-signé, aucune donnée réelle protégée, le coût d'une réécriture d'historique ne se justifie pas ici.**
 
-`fetch-vault-secrets.yml` génère un nouveau `secret_id` à chaque exécution du playbook (comportement voulu, déjà documenté), mais ne révoque jamais l'ancien — les vieux identifiants restent valides jusqu'à expiration de leur TTL (4h max). Pas bloquant, mais un `vault write -f auth/approle/role/<svc>/secret-id-accessor/destroy` sur l'ancien avant d'en émettre un nouveau serait plus propre et facile à justifier comme "moindre privilège dans le temps".
+## Vérifié aujourd'hui avec un regard neuf (au-delà du scope backend d'hier)
 
-### ⚠️ 5. Nœuds Neo4j jamais supprimés (seulement les relations)
+- **CRUD Admin Dashboard (frontend)** : `create`/`update`/`delete` bien présents et câblés au bon verbe HTTP pour les 3 entités — users (`users.ts`), travels (`travels.ts`), payments + payment-methods (`payments.ts`/`payment-methods.ts`).
+- **Responsive** : `shell.scss` a un vrai breakpoint (`@media (max-width: 860px)`) qui bascule la sidebar en panneau coulissant avec bouton burger — pas un habillage superficiel.
+- **Stripe/PayPal** : `PaymentProvider` (interface) + `StripePaymentProvider`/`PayPalPaymentProvider` + `ProviderType` + credentials dédiées par provider, résolues via `PaymentProviderResolver` — architecture propre, extensible à un 3ᵉ provider sans toucher à l'existant.
+- **Cascade Postgres, vérifié au niveau du code (pas juste la doc)** : `User.address` en `@OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)` (supprimer un User supprime son Address) ; `Payment.paymentMethod` en `@OnDelete(action = OnDeleteAction.SET_NULL)` (supprimer une PaymentMethod met le paiement à `NULL`, garde l'historique). Les deux choix sont cohérents et défendables à l'oral.
+- **Tracing** : ~~les 5 services ont une config Zipkin~~ — **faux avant ce soir**, voir section suivante.
+- **HA/replicas** : `replicas: 2` confirmé sur les 5 microservices dans `docker-compose.yml`, mais avoir des replicas ne suffit pas à garantir la répartition de charge — voir section suivante.
 
-Supprimer un `Travel` supprime bien la relation `ROUTE_TO` associée (`TravelGraphSyncService`, testé), mais jamais le `PlaceNode` (ville) lui-même — les villes s'accumulent indéfiniment dans le graphe. **C'est probablement le bon comportement** (une ville reste une référence partagée entre plusieurs voyages, la supprimer casserait les voyages des autres utilisateurs qui la référencent) — mais comme l'énoncé insiste spécifiquement sur "cascade delete entre PostgreSQL et Neo4j", prépare cette justification à l'oral plutôt que de laisser penser que c'est un oubli.
+## Corrigé ce soir (30/07, troisième passe — bugs trouvés en testant en direct, pas en relisant le code)
 
-### ⚠️ 6. Trois trous de tests unitaires
+| Point | Root cause | Fix |
+|---|---|---|
+| `POST /api/travels` avec 2+ destinations → 500 | `Neo4jTransactionManager` jamais auto-configuré par Spring Boot quand JPA+Neo4j coexistent ; une fois ajouté manuellement, ça désactivait à son tour l'auto-config du `transactionManager` JPA (`@ConditionalOnMissingBean(TransactionManager.class)`) | `Neo4jTransactionConfig.java` déclare explicitement les deux `PlatformTransactionManager` (JPA en `@Primary`, Neo4j à part) |
+| `updatedAt` jamais rafraîchi sur `PUT /travels`, `/users`, `/payments/refund` | `@PreUpdate` ne s'exécute qu'au flush Hibernate (différé au commit), pas au moment de `save()` — la réponse HTTP était donc construite avec l'ancienne valeur | `save()` → `saveAndFlush()` sur les 3 chemins concernés |
+| JSON malformé / enum invalide → 500 au lieu de 400 | `HttpMessageNotReadableException` (échoue avant Bean Validation) tombait dans le catch-all `Exception.class` générique | Handler dédié `HttpMessageNotReadableException` → 400, sur les 3 services |
+| Formulaires frontend muets si champ invalide/manquant | Les 5 formulaires Angular faisaient `markAllAsTouched()` sans jamais afficher de message (ni toast, ni erreur inline) | Toast d'erreur ajouté sur les 4 formulaires CRUD (travel/user/payment/payment-method) |
+| Zipkin ne recevait **aucune** trace (`/api/v2/services` → `[]`) malgré une config qui semblait correcte | Deux bugs cumulés propres à Spring Boot 4.x : (1) propriété renommée `management.zipkin.tracing.endpoint` → `management.tracing.export.zipkin.endpoint` ; (2) le couple `micrometer-tracing-bridge-brave` + `zipkin-reporter-brave` assemblé à la main ne suffit plus, il faut le starter unique `spring-boot-starter-zipkin` | Propriété renommée + dépendance remplacée dans les 5 `pom.xml`/`application.properties`. Vérifié : les 3 services traçables apparaissent bien dans `/api/v2/services` |
+| Load balancing entre replicas : tout le trafic restait collé à un seul conteneur (100/0 sur un burst de 20 requêtes) | `api-gateway` utilise déjà `spring-cloud-starter-loadbalancer` (`RouteConfig.java`, filtre `lb(...)`), mais le `SimpleDiscoveryClient` ne déclarait qu'**une seule instance** par service (le nom DNS partagé) — rien à répartir. Le DNS round-robin de Docker seul ne suffit pas : le client HTTP garde sa connexion keep-alive vers la première IP résolue | 2 instances explicites déclarées par service (noms de conteneurs Compose), dans `application.properties` + `docker-compose.yml`. Vérifié via traces Zipkin : répartition 175/175 sur un burst de 30 requêtes |
 
-- `api-gateway/.../security/JwtService.java` — aucun test dédié.
-- `payment-service/.../repository/PaymentMethodRepository.java` — aucun test dédié.
-- `travel-service/.../graph/PlaceRepository.java` — sa requête Cypher personnalisée (`suggestNextDestinations`) n'est jamais exécutée contre un vrai Neo4j, seulement mockée.
+Détail des commandes de vérification (réutilisables à l'oral) : [`10-audit-demo-guide.md`](10-audit-demo-guide.md).
 
-Rapide à combler, et l'audit demande explicitement un test par fonctionnalité.
+## Ce qui reste solide (inchangé depuis hier, pas re-détaillé ici)
 
-### ⚠️ 7. `nginx` et `zipkin` sans `healthcheck`
+Indépendance des microservices, API Gateway, policies Vault scopées, aucun secret en dur, idempotence Ansible, Quality Gate SonarQube bloquant, Docker multi-stage non-root, conventions Git/PR. Voir la version du 29/07 dans l'historique Git si le détail est utile à l'oral.
 
-Tous les autres services en ont un ; ces deux-là non. Facile à ajouter (`wget`/`curl` interne suffit).
+## Bonus — état
 
-## Ce qui est déjà solide (rien à changer)
-
-- **Indépendance des microservices** : une DB Postgres + un user dédié par service, aucun accès croisé, aucune lib partagée.
-- **API Gateway** : route vers les 4 services, valide le JWT au périmètre avant de relayer.
-- **Tracing distribué** : les 5 services remontent vers Zipkin.
-- **HA** : `replicas: 2` sur les 5 microservices, healthchecks sur l'essentiel, répartition via le DNS round-robin de Docker.
-- **Vault** : policy scoped strictement par service (pas de wildcard `secret/*`), TTL courts (1h/4h).
-- **Postgres** : chaque user n'a de droits que sur sa propre base, pas de superuser côté appli.
-- **Aucun secret en dur** trouvé dans le code source (hors fixtures de test).
-- **Cascade Postgres** : `User → Address` en `ON DELETE CASCADE`, `PaymentMethod → Payment` en `ON DELETE SET NULL` — les deux choix sont cohérents et justifiables.
-- **Ansible** : quasi tout est idempotent nativement (`apt`, `copy force:false`, `command creates:`) ; seule nuance connue = le `secret_id` Vault (point 4 ci-dessus), déjà documentée.
-- **Jenkins** : build + tests des 5 services en parallèle, Quality Gate SonarQube qui fait vraiment échouer le build (`sonar.qualitygate.wait=true`).
-- **Docker** : build multi-stage, utilisateur non-root (`spring:spring`) sur les 5 services.
-- **Git/PR** : convention `feat/<service>-<sujet>` / `chore/<sujet>` respectée, commits de type conventional commits, un service = une branche = une PR.
-- **Bonus doc** : déjà complet et à jour (hors la note ci-dessous).
-- **Bonus Kubernetes / E2E** : non commencés — attendu, à mentionner comme "non fait, priorisé après le cœur du sujet" si demandé.
-
-## Petites incohérences de doc à corriger
-
-- `docs/01-ci-cd.md` dit encore "3 services" dans `SERVICES` — le vrai `Jenkinsfile` en a 5.
-- Vérifie que le job Multibranch Pipeline existe toujours dans Jenkins après le redémarrage du conteneur de ce soir (son volume `jenkins_home` a survécu, mais autant confirmer visuellement qu'il rescane bien).
+- **Doc** : complète et à jour pour tout sauf `01-ci-cd.md` (point 4 ci-dessus).
+- **Kubernetes / E2E** : non commencés — à mentionner comme "non fait, priorisé après le cœur du sujet" si demandé.

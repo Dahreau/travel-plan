@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -35,6 +36,20 @@ public class ApiExceptionHandler {
                 .reduce((first, second) -> first + ", " + second)
                 .orElse("Validation failed");
         return build(HttpStatus.BAD_REQUEST, message);
+    }
+
+    // JSON invalide ou enum inconnue echoue avant Bean Validation -> 400, pas 500.
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMalformedRequest(HttpMessageNotReadableException ex) {
+        log.warn("Malformed request body: {}", ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, "Malformed or invalid request body");
+    }
+
+    // Filet de securite : toute exception imprevue reste un 500 clair, pas un 403 trompeur.
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
+        log.error("Unhandled exception while processing request", ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error");
     }
 
     private ResponseEntity<Map<String, Object>> build(HttpStatus status, String message) {

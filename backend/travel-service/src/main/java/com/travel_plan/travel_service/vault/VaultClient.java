@@ -1,8 +1,21 @@
 package com.travel_plan.travel_service.vault;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.http.HttpClient;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
+import java.security.SecureRandom;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.Map;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -18,8 +31,38 @@ public class VaultClient {
     public VaultClient(
             @Value("${app.vault.addr}") String vaultAddr,
             @Value("${app.vault.role-id}") String roleId,
-            @Value("${app.vault.secret-id}") String secretId) {
-        this(vaultAddr, roleId, secretId, RestClient.create());
+            @Value("${app.vault.secret-id}") String secretId,
+            @Value("${app.vault.tls-cert-path}") String vaultTlsCertPath) {
+        this(vaultAddr, roleId, secretId, RestClient.builder()
+                .requestFactory(new JdkClientHttpRequestFactory(vaultHttpClient(vaultTlsCertPath)))
+                .build());
+    }
+
+    // Vault a sa propre CA auto-signee (infra/vault/certs/vault.crt) : on ne fait confiance qu'a elle.
+    private static HttpClient vaultHttpClient(String vaultTlsCertPath) {
+        Path certPath = Path.of(vaultTlsCertPath);
+        if (!Files.exists(certPath)) {
+            return HttpClient.newHttpClient();
+        }
+        try {
+            KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+            trustStore.load(null, null);
+            try (InputStream in = Files.newInputStream(certPath)) {
+                X509Certificate vaultCert =
+                        (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(in);
+                trustStore.setCertificateEntry("vault", vaultCert);
+            }
+
+            TrustManagerFactory trustManagerFactory =
+                    TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            trustManagerFactory.init(trustStore);
+
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustManagerFactory.getTrustManagers(), new SecureRandom());
+            return HttpClient.newBuilder().sslContext(sslContext).build();
+        } catch (IOException | GeneralSecurityException e) {
+            throw new IllegalStateException("Failed to load Vault TLS certificate from " + vaultTlsCertPath, e);
+        }
     }
 
     VaultClient(String vaultAddr, String roleId, String secretId, RestClient restClient) {

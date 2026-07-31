@@ -40,6 +40,7 @@ Vault, Zipkin) — voir `02-app-infra.md`.
 - [`07-payment-service.md`](07-payment-service.md) — moyens de paiement, paiements Stripe/PayPal (branche `feat/payment-service-crud`).
 - [`08-ansible-deploy-tls.md`](08-ansible-deploy-tls.md) — déploiement automatisé, replicas, TLS via Nginx (branche `chore/ansible-deploy-tls`).
 - [`09-admin-dashboard.md`](09-admin-dashboard.md) — Admin Dashboard Angular (branche `feat/admin-dashboard`).
+- [`10-audit-demo-guide.md`](10-audit-demo-guide.md) — pour chaque point de `travel-plan_audit.md`, la commande exacte à taper ou le point à savoir expliquer à l'oral.
 - [`nouveautes-vs-buy02.md`](nouveautes-vs-buy02.md) — tout ce qui est vraiment nouveau par rapport à buy-02, mis à jour à chaque branche.
 
 Chaque nouvelle page prend le numéro suivant au moment où sa branche est

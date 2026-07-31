@@ -54,7 +54,7 @@ class TravelControllerTest {
 
     @Test
     void findAllReturnsAllTravels() throws Exception {
-        when(travelService.findAll()).thenReturn(List.of(newTravel("Iberian tour")));
+        when(travelService.findAll()).thenReturn(List.of(TravelResponse.from(newTravel("Iberian tour"))));
 
         mockMvc.perform(get("/api/travels"))
                 .andExpect(status().isOk())
@@ -74,7 +74,7 @@ class TravelControllerTest {
 
     @Test
     void createReturns201ForValidRequest() throws Exception {
-        when(travelService.create(any(TravelRequest.class))).thenReturn(newTravel("Iberian tour"));
+        when(travelService.create(any(TravelRequest.class))).thenReturn(TravelResponse.from(newTravel("Iberian tour")));
 
         mockMvc.perform(post("/api/travels")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -114,7 +114,8 @@ class TravelControllerTest {
     @Test
     void updateReturns200ForValidRequest() throws Exception {
         UUID id = UUID.randomUUID();
-        when(travelService.update(any(UUID.class), any(TravelRequest.class))).thenReturn(newTravel("Updated tour"));
+        when(travelService.update(any(UUID.class), any(TravelRequest.class)))
+                .thenReturn(TravelResponse.from(newTravel("Updated tour")));
 
         mockMvc.perform(put("/api/travels/{id}", id)
                         .contentType(MediaType.APPLICATION_JSON)

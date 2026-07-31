@@ -7,6 +7,10 @@ if ! vault auth list -format=json | grep -q '"approle/"'; then
 	vault auth enable approle
 fi
 
+if ! vault secrets list -format=json | grep -q '"secret/"'; then
+	vault secrets enable -path=secret kv-v2
+fi
+
 vault policy write "shared-policy" "/vault-init/policies/shared-policy.hcl"
 
 for svc in $SERVICES; do

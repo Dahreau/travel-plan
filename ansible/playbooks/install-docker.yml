@@ -60,3 +60,9 @@
         groups: docker
         append: true
       when: docker_check.rc != 0
+
+    - name: Ensure the buildx plugin is present (needed for "additional_contexts" in compose builds)
+      ansible.builtin.apt:
+        name: docker-buildx-plugin
+        state: present
+        update_cache: true

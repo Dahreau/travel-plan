@@ -3,7 +3,10 @@ package com.travel_plan.payment_service.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.travel_plan.payment_service.domain.MethodType;
@@ -82,13 +85,21 @@ class PaymentServiceTest {
     @Test
     void refundMarksSucceededPaymentAsRefunded() {
         UUID id = UUID.randomUUID();
-        Payment payment = Payment.builder().id(id).status(PaymentStatus.SUCCEEDED).build();
+        Payment payment = Payment.builder()
+                .id(id)
+                .status(PaymentStatus.SUCCEEDED)
+                .provider(ProviderType.STRIPE)
+                .providerReference("pi_123")
+                .build();
+        PaymentProvider stripeProvider = mock(PaymentProvider.class);
         when(paymentRepository.findById(id)).thenReturn(Optional.of(payment));
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(paymentProviderResolver.resolve(ProviderType.STRIPE)).thenReturn(stripeProvider);
+        when(paymentRepository.saveAndFlush(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         Payment refunded = paymentService.refund(id);
 
         assertThat(refunded.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        verify(stripeProvider).refund("pi_123");
     }
 
     @Test
@@ -98,6 +109,26 @@ class PaymentServiceTest {
         when(paymentRepository.findById(id)).thenReturn(Optional.of(payment));
 
         assertThatThrownBy(() -> paymentService.refund(id)).isInstanceOf(InvalidRefundException.class);
+    }
+
+    @Test
+    void refundDoesNotChangeStatusWhenProviderRefundFails() {
+        UUID id = UUID.randomUUID();
+        Payment payment = Payment.builder()
+                .id(id)
+                .status(PaymentStatus.SUCCEEDED)
+                .provider(ProviderType.STRIPE)
+                .providerReference("pi_123")
+                .build();
+        PaymentProvider stripeProvider = mock(PaymentProvider.class);
+        when(paymentRepository.findById(id)).thenReturn(Optional.of(payment));
+        when(paymentProviderResolver.resolve(ProviderType.STRIPE)).thenReturn(stripeProvider);
+        doThrow(new IllegalStateException("Stripe refund failed")).when(stripeProvider).refund("pi_123");
+
+        assertThatThrownBy(() -> paymentService.refund(id)).isInstanceOf(IllegalStateException.class);
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.SUCCEEDED);
+        verify(paymentRepository, never()).saveAndFlush(any());
     }
 
     @Test

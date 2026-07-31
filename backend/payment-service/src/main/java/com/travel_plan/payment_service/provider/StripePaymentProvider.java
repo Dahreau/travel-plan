@@ -62,4 +62,28 @@ public class StripePaymentProvider implements PaymentProvider {
         PaymentStatus mappedStatus = "succeeded".equals(status) ? PaymentStatus.SUCCEEDED : PaymentStatus.FAILED;
         return new ChargeResult(String.valueOf(response.get("id")), mappedStatus);
     }
+
+    @Override
+    public void refund(String providerReference) {
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("payment_intent", providerReference);
+
+        Map<String, Object> response = restClient
+                .post()
+                .uri(apiBase + "/v1/refunds")
+                .headers(headers -> {
+                    headers.setBasicAuth(credentials.secretKey(), "");
+                    headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+                })
+                .body(body)
+                .retrieve()
+                .body(Map.class);
+
+        if (response == null || response.get("id") == null) {
+            throw new IllegalStateException("Stripe did not return a refund id for payment_intent " + providerReference);
+        }
+        if ("failed".equals(String.valueOf(response.get("status")))) {
+            throw new IllegalStateException("Stripe refund failed for payment_intent " + providerReference);
+        }
+    }
 }
