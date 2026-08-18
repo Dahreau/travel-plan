@@ -59,6 +59,11 @@ class UserControllerTest {
     }
 
     @Test
+    void findByIdReturns400ForNonUuidId() throws Exception {
+        mockMvc.perform(get("/api/users/{id}", "not-a-uuid")).andExpect(status().isBadRequest());
+    }
+
+    @Test
     void createReturns201ForValidRequest() throws Exception {
         when(userService.create(any(UserRequest.class))).thenReturn(newUserResponse("ada@travel-plan.com"));
 

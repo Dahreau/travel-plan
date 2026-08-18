@@ -35,9 +35,11 @@ Légende : ✅ vérifié aujourd'hui, prêt pour l'audit — ⚠️ vrai écart 
 | Healthcheck Nginx `unhealthy` en permanence | `wget` resolvait `localhost` en IPv6 en premier alors que nginx n'ecoute qu'en IPv4 — healthcheck pointe maintenant sur `127.0.0.1` explicitement. |
 | `docker compose up` echouait a demarrer travel-service/api-gateway/nginx apres l'activation TLS sur Neo4j | Le policy SSL bolt allonge le temps de boot de Neo4j au-dela du budget du healthcheck (5×10s) ; retries porte a 12. |
 
-## ⚠️ Encore ouvert — à trancher avant de considérer la branche finale
+## Décisions assumées à justifier à l'oral (pas des tâches restantes)
 
-### 1. Nœuds Neo4j jamais supprimés (seulement les relations) — à justifier, pas à corriger
+Les deux points ci-dessous ont déjà été tranchés le 30/07 — rien à corriger avant l'audit, juste à savoir expliquer si le jury les relève. Le seul vrai point non fait reste Kubernetes/E2E, déjà cadré comme tel dans la section Bonus plus bas.
+
+### 1. Nœuds Neo4j jamais supprimés (seulement les relations) — décision assumée, pas un oubli
 
 Supprimer un `Travel` supprime la relation `ROUTE_TO` mais garde le `PlaceNode` (ville). Comportement probablement correct (une ville est une référence partagée entre voyages) mais l'énoncé insiste sur "cascade entre PostgreSQL et Neo4j" — prépare la justification orale plutôt que de laisser croire à un oubli. **Décision (30/07) : pas un bug, ne pas changer.**
 
