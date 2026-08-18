@@ -106,6 +106,114 @@ class TravelControllerTest {
     }
 
     @Test
+    void createReturns400WhenEndDateBeforeStartDate() throws Exception {
+        TravelRequest request = new TravelRequest(
+                "Iberian tour",
+                UUID.randomUUID(),
+                LocalDate.of(2026, Month.SEPTEMBER, 10),
+                LocalDate.of(2026, Month.SEPTEMBER, 1),
+                TravelStatus.PLANNED,
+                List.of(new DestinationRequest(
+                        "Lisbon", "Portugal",
+                        LocalDate.of(2026, Month.SEPTEMBER, 1), LocalDate.of(2026, Month.SEPTEMBER, 5),
+                        0, List.of(), null)),
+                List.of());
+
+        mockMvc.perform(post("/api/travels")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createReturns400WhenDestinationDepartureBeforeArrival() throws Exception {
+        TravelRequest request = new TravelRequest(
+                "Iberian tour",
+                UUID.randomUUID(),
+                LocalDate.of(2026, Month.SEPTEMBER, 1),
+                LocalDate.of(2026, Month.SEPTEMBER, 10),
+                TravelStatus.PLANNED,
+                List.of(new DestinationRequest(
+                        "Lisbon", "Portugal",
+                        LocalDate.of(2026, Month.SEPTEMBER, 5), LocalDate.of(2026, Month.SEPTEMBER, 1),
+                        0, List.of(), null)),
+                List.of());
+
+        mockMvc.perform(post("/api/travels")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createReturns400WhenAccommodationCheckOutBeforeCheckIn() throws Exception {
+        AccommodationRequest accommodation = new AccommodationRequest(
+                "Alfama Hostel", AccommodationType.HOSTEL, "Rua de Sao Miguel 10",
+                LocalDate.of(2026, Month.SEPTEMBER, 5), LocalDate.of(2026, Month.SEPTEMBER, 1));
+        TravelRequest request = new TravelRequest(
+                "Iberian tour",
+                UUID.randomUUID(),
+                LocalDate.of(2026, Month.SEPTEMBER, 1),
+                LocalDate.of(2026, Month.SEPTEMBER, 10),
+                TravelStatus.PLANNED,
+                List.of(new DestinationRequest(
+                        "Lisbon", "Portugal",
+                        LocalDate.of(2026, Month.SEPTEMBER, 1), LocalDate.of(2026, Month.SEPTEMBER, 5),
+                        0, List.of(), accommodation)),
+                List.of());
+
+        mockMvc.perform(post("/api/travels")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createReturns400WhenTransportationArrivalBeforeDeparture() throws Exception {
+        TransportationRequest transportation = new TransportationRequest(
+                TransportationType.FLIGHT, "Paris CDG", "Lisbon LIS",
+                Instant.parse("2026-09-01T10:00:00Z"), Instant.parse("2026-09-01T08:00:00Z"), "TAP");
+        TravelRequest request = new TravelRequest(
+                "Iberian tour",
+                UUID.randomUUID(),
+                LocalDate.of(2026, Month.SEPTEMBER, 1),
+                LocalDate.of(2026, Month.SEPTEMBER, 10),
+                TravelStatus.PLANNED,
+                List.of(new DestinationRequest(
+                        "Lisbon", "Portugal",
+                        LocalDate.of(2026, Month.SEPTEMBER, 1), LocalDate.of(2026, Month.SEPTEMBER, 5),
+                        0, List.of(), null)),
+                List.of(transportation));
+
+        mockMvc.perform(post("/api/travels")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createReturns400WhenActivityCostIsNegative() throws Exception {
+        ActivityRequest activity = new ActivityRequest(
+                "Tram 28", null, LocalDate.of(2026, Month.SEPTEMBER, 2), new BigDecimal("-3.50"));
+        TravelRequest request = new TravelRequest(
+                "Iberian tour",
+                UUID.randomUUID(),
+                LocalDate.of(2026, Month.SEPTEMBER, 1),
+                LocalDate.of(2026, Month.SEPTEMBER, 10),
+                TravelStatus.PLANNED,
+                List.of(new DestinationRequest(
+                        "Lisbon", "Portugal",
+                        LocalDate.of(2026, Month.SEPTEMBER, 1), LocalDate.of(2026, Month.SEPTEMBER, 5),
+                        0, List.of(activity), null)),
+                List.of());
+
+        mockMvc.perform(post("/api/travels")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void createReturns409WhenDataIntegrityViolation() throws Exception {
         when(travelService.create(any(TravelRequest.class)))
                 .thenThrow(new DataIntegrityViolationException("duplicate accommodation"));
