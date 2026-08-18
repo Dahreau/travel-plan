@@ -6,18 +6,23 @@
 
 Prérequis : la stack applicative tourne (`./scripts/start-app.sh`) — `auth-service` a besoin de `postgres` (base `auth_db`) et `vault`.
 
-Récupère les identifiants AppRole d'`auth-service` (une seule fois, ils ne changent pas) :
+**Façon recommandée** (fonctionne toujours, Vault et TLS déjà câblés) :
+```bash
+docker compose up -d --build auth-service
+```
 
+**Hors Docker (hot-reload local)** : Vault n'a volontairement aucun port publié sur l'host (durcissement sécurité), donc `VAULT_ADDR=http://localhost:8200` ne peut pas fonctionner tel quel — il faut d'abord exposer temporairement le port :
 ```bash
 docker compose exec vault vault read -field=role_id auth/approle/role/auth-service/role-id
 docker compose exec vault vault write -f -field=secret_id auth/approle/role/auth-service/secret-id
+docker compose port vault 8200 || echo "Vault n'a pas de port publié : ajoute temporairement '127.0.0.1:8200:8200' sous vault.ports dans docker-compose.yml puis 'docker compose up -d vault' avant de continuer"
 ```
 
-Puis lance le service :
+Puis lance le service (Postgres est sur le port `5434`, pas le `5432` par défaut) :
 
 ```bash
 cd backend/auth-service
-DB_HOST=localhost DB_PASSWORD=<ton AUTH_DB_PASSWORD> \
+DB_HOST=localhost DB_PORT=5434 DB_PASSWORD=<ton AUTH_DB_PASSWORD> \
 VAULT_ADDR=http://localhost:8200 VAULT_ROLE_ID=<role_id> VAULT_SECRET_ID=<secret_id> \
 ./mvnw spring-boot:run
 ```

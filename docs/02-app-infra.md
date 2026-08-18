@@ -10,7 +10,7 @@
 
 Premier lancement : le script crée `.env` à la racine du repo depuis `.env.example` et s'arrête — édite les mots de passe Postgres/Neo4j/Vault (jamais commit ce fichier, seul `.env.example` est versionné), puis relance le script.
 
-Postgres `127.0.0.1:5434` (5432 en interne — 5434 côté host pour éviter un conflit de port local, voir commentaire dans `docker-compose.yml`) · Neo4j Browser http://localhost:7474 · Zipkin http://localhost:9411
+Postgres `127.0.0.1:5434` (5432 en interne — 5434 côté host pour éviter un conflit de port local, voir commentaire dans `docker-compose.yml`) · Neo4j Browser http://localhost:7474
 
 - **Vault n'est plus accessible depuis l'host** (durcissement réseau, cf. `08-ansible-deploy-tls.md`) : plus de port publié, plus de token racine à connaître pour l'usage courant. Toutes les commandes passent par `docker compose exec vault vault ...` (voir plus bas) ; le vrai `VAULT_ROOT_TOKEN` est régénéré à froid par `ansible/playbooks/vault-unseal.yml` et écrit dans `.env`, jamais fixe.
 - Les ports publiés sont paramétrables (`POSTGRES_HOST_PORT`, `NEO4J_HTTP_HOST_PORT`, etc. — voir `.env.example`), utile seulement en cas de conflit si tu fais tourner une deuxième copie de la stack. Rien à changer normalement.
@@ -36,7 +36,7 @@ Depuis ta machine (host), utilise `localhost`. Depuis un autre conteneur du mêm
 | Postgres | `127.0.0.1:5434` | `postgres:5432` |
 | Neo4j | Browser http://localhost:7474 · Bolt `localhost:7687` (chiffré, `bolt+ssc://`) | `bolt+ssc://neo4j:7687` |
 | Vault | non exposé sur l'host — `docker compose exec vault vault ...` uniquement | `vault:8200` (HTTPS, cert auto-signé) |
-| Zipkin | http://localhost:9411 | `zipkin:9411` |
+| Zipkin | non exposé sur l'host non plus (même durcissement) — `docker compose exec zipkin wget -qO- http://localhost:9411/...` uniquement | `zipkin:9411` |
 
 **Postgres** :
 
@@ -66,7 +66,13 @@ docker compose exec vault vault write -f auth/approle/role/auth-service/secret-i
 En déploiement réel, `ansible/playbooks/fetch-vault-secrets.yml` fait exactement ça pour les 5 services et écrit le résultat dans `.env`. Côté code, chaque service lit ses secrets via un `VaultClient.java` maison (`RestClient` + login AppRole), pas `spring-cloud-starter-vault-config` — dépendance jugée trop lourde pour le besoin, même logique que le choix fait pour Stripe/PayPal (voir `07-payment-service.md`).
 </details>
 
-**Zipkin** : UI pour parcourir les traces, alimentée en continu par les 5 microservices (`management.tracing.export.zipkin.endpoint`, dépendance `spring-boot-starter-zipkin`).
+**Zipkin** : alimentée en continu par les 5 microservices (`management.tracing.export.zipkin.endpoint`, dépendance `spring-boot-starter-zipkin`). Pas d'UI accessible depuis l'host (port non publié, même durcissement que Vault) — interroger l'API depuis l'host via le conteneur :
+
+```bash
+docker compose exec zipkin wget -qO- "http://localhost:9411/api/v2/traces?serviceName=travel-service&limit=1" | jq .
+```
+
+Détail d'une commande lisible (traceId + service + span, triés chronologiquement) → `10-audit-demo-guide.md`, section "Can you track and trace a request across multiple services easily?".
 
 ## Vue d'ensemble
 

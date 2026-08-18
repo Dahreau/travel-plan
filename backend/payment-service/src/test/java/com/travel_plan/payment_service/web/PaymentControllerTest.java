@@ -64,6 +64,16 @@ class PaymentControllerTest {
     }
 
     @Test
+    void findByIdReturns400ForNonUuidId() throws Exception {
+        mockMvc.perform(get("/api/payments/{id}", "not-a-uuid")).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void refundReturns400ForNonUuidId() throws Exception {
+        mockMvc.perform(post("/api/payments/{id}/refund", "not-a-uuid")).andExpect(status().isBadRequest());
+    }
+
+    @Test
     void createReturns201ForValidRequest() throws Exception {
         when(paymentService.create(any(PaymentRequest.class))).thenReturn(newPayment(PaymentStatus.SUCCEEDED));
 

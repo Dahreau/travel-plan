@@ -73,6 +73,11 @@ class TravelControllerTest {
     }
 
     @Test
+    void findByIdReturns400ForNonUuidId() throws Exception {
+        mockMvc.perform(get("/api/travels/{id}", "not-a-uuid")).andExpect(status().isBadRequest());
+    }
+
+    @Test
     void createReturns201ForValidRequest() throws Exception {
         when(travelService.create(any(TravelRequest.class))).thenReturn(TravelResponse.from(newTravel("Iberian tour")));
 

@@ -12,6 +12,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -43,6 +44,13 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleMalformedRequest(HttpMessageNotReadableException ex) {
         log.warn("Malformed request body: {}", ex.getMessage());
         return build(HttpStatus.BAD_REQUEST, "Malformed or invalid request body");
+    }
+
+    // ID d'URL non-UUID (ex: /travels/null) -> 400, pas 500.
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("Invalid path parameter '{}': {}", ex.getName(), ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, "Invalid value for parameter '" + ex.getName() + "'");
     }
 
     // Filet de securite : toute exception imprevue reste un 500 clair, pas un 403 trompeur.

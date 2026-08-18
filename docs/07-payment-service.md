@@ -6,11 +6,16 @@
 
 Prérequis : la stack applicative tourne (`./scripts/start-app.sh`) — `payment-service` a besoin de `postgres` (base `payment_db`) et `vault`.
 
-Récupère les identifiants AppRole de `payment-service` (une seule fois, ils ne changent pas) :
+**Façon recommandée** (fonctionne toujours, Vault et TLS déjà câblés) :
+```bash
+docker compose up -d --build payment-service
+```
 
+**Hors Docker (hot-reload local)** : Vault n'a volontairement aucun port publié sur l'host (durcissement sécurité), donc `VAULT_ADDR=http://localhost:8200` ne peut pas fonctionner tel quel — il faut d'abord exposer temporairement le port :
 ```bash
 docker compose exec vault vault read -field=role_id auth/approle/role/payment-service/role-id
 docker compose exec vault vault write -f -field=secret_id auth/approle/role/payment-service/secret-id
+docker compose port vault 8200 || echo "Vault n'a pas de port publié : ajoute temporairement '127.0.0.1:8200:8200' sous vault.ports dans docker-compose.yml puis 'docker compose up -d vault' avant de continuer"
 ```
 
 Contrairement au secret JWT partagé, les identifiants Stripe/PayPal ne sont **pas** seedés automatiquement par `bootstrap.sh` — ce sont de vraies clés tierces, pas un secret généré aléatoirement. Il faut les écrire une fois toi-même (des clés de test suffisent, sandbox Stripe/PayPal) :
@@ -20,13 +25,13 @@ docker compose exec vault vault kv put secret/payment-service/stripe secret_key=
 docker compose exec vault vault kv put secret/payment-service/paypal client_id=xxx client_secret=xxx
 ```
 
-**Ça ne se propage pas automatiquement à l'équipe.** Vault tourne en mode dev, en mémoire, par machine — ce que tu écris ici n'existe que dans ton Vault local, pas celui d'un collègue qui lance la stack de son côté (contrairement au secret JWT, auto-généré pour tout le monde par `bootstrap.sh`). Deux options, au choix de l'équipe : chacun crée son propre compte sandbox Stripe/PayPal et répète ces deux commandes chez lui (cohérent avec le reste du projet, comportement identique puisqu'on est en sandbox), ou l'équipe partage une seule paire de clés de test par un canal privé (jamais commitée dans le repo) — acceptable seulement parce que ce sont des clés sandbox, sans argent réel en jeu.
+**Ça ne se propage pas automatiquement à l'équipe.** Vault tourne en mode serveur réel (stockage persistant sur volume Docker), mais une instance par machine — ce que tu écris ici n'existe que dans ton Vault local, pas celui d'un collègue qui lance la stack de son côté (contrairement au secret JWT, auto-généré pour tout le monde par `bootstrap.sh`). Deux options, au choix de l'équipe : chacun crée son propre compte sandbox Stripe/PayPal et répète ces deux commandes chez lui (cohérent avec le reste du projet, comportement identique puisqu'on est en sandbox), ou l'équipe partage une seule paire de clés de test par un canal privé (jamais commitée dans le repo) — acceptable seulement parce que ce sont des clés sandbox, sans argent réel en jeu.
 
-Puis lance le service :
+Puis lance le service (Postgres est sur le port `5434`, pas le `5432` par défaut) :
 
 ```bash
 cd backend/payment-service
-DB_HOST=localhost DB_PASSWORD=<ton PAYMENT_DB_PASSWORD> \
+DB_HOST=localhost DB_PORT=5434 DB_PASSWORD=<ton PAYMENT_DB_PASSWORD> \
 VAULT_ADDR=http://localhost:8200 VAULT_ROLE_ID=<role_id> VAULT_SECRET_ID=<secret_id> \
 ./mvnw spring-boot:run
 ```
@@ -115,5 +120,5 @@ Tout n'est pas fait pour cascader. `User`/`Address` et `Travel`/`Destination` ca
 ### Pourquoi il n'y a pas de `PUT`/`DELETE` sur `/api/payments`
 Un paiement n'est jamais "modifié" dans un vrai système de paiement — Stripe et PayPal eux-mêmes ne permettent pas d'éditer une charge, seulement de la rembourser. `PaymentService` reflète ça : `create` (débite), `findAll`/`findById` (lecture), `refund` (transition d'état contrôlée, refusée si le paiement n'est pas déjà `SUCCEEDED`). Aucune route ne permet de réécrire l'historique.
 
-### Pourquoi le remboursement ne rappelle pas Stripe/PayPal pour l'instant
-`refund()` change seulement le statut en base (`REFUNDED`). Le vrai appel de remboursement côté provider suit exactement le même schéma que `charge()` (`RestClient` + `ProviderCredentials`) et sera ajouté quand le sujet l'exigera explicitement — limitation connue, pas un oubli, au même titre que Vault en mode dev documenté comme choix explicite dans `nouveautes-vs-buy02.md`.
+### Pourquoi le remboursement rappelle réellement Stripe/PayPal
+`refund()` notifie d'abord le vrai provider (`POST /v1/refunds` chez Stripe avec `payment_intent`, `POST /v2/payments/captures/{id}/refund` chez PayPal) avant de changer le statut local en `REFUNDED` — si le provider refuse ou est injoignable, aucun changement d'état local n'a lieu (`RestClientException` intercepté par `ApiExceptionHandler` → 502, transaction annulée par `@Transactional`). Bonus non exigé par l'énoncé/l'audit (CRUD payment-methods + support Stripe/PayPal suffisent) ; nécessite une vraie clé de test `sk_test_...` dans `.env`/Vault pour être démontré en live, sinon l'appel échoue en 502 (comportement attendu, pas un bug).

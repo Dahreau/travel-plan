@@ -141,9 +141,9 @@ Les 5 services partent de coquilles Spring Initializr avec un seul test génér�
 
 Via `@EnableAutoConfiguration(exclude = {...})` avec de **vraies classes importées**, pas une chaîne de caractères (`spring.autoconfigure.exclude=...`) : une première version utilisait les noms de package Spring Boot 2.x/3.x, invalides depuis que Boot 4 a éclaté `spring-boot-autoconfigure` en modules par techno — une chaîne pointant vers une classe inexistante est silencieusement ignorée (pas d'erreur), ce qui a laissé 3 services échouer sans message clair. Une classe importée fait échouer la compilation immédiatement si elle est déplacée/renommée.
 
-Ces exclusions seront remplacées par de vrais tests d'intégration (Testcontainers) dès qu'un vrai repository JPA/Neo4j existera — pas par un retour à `@SpringBootTest` nu.
+Ces exclusions ont depuis été complétées par de vrais tests de repository (`UserRepositoryTest`, `PaymentRepositoryTest`, etc.) — H2 en mémoire pour les 3 services JPA-only, Testcontainers avec un vrai Neo4j pour `travel-service` (`PlaceRepositoryTest`). Le `contextLoads()` généré par Spring Initializr reste utile en plus, pas remplacé : il vérifie que le contexte Spring complet démarre, ce qu'un test de repository isolé ne couvre pas.
 
 ### Pourquoi `infra/ci/` est séparé de `backend/`
 Jenkins/SonarQube (infra CI, tourne en continu) et la stack applicative n'ont ni le même cycle de vie ni les mêmes dépendances — regroupées sous `infra/` pour séparer "ce qui fait tourner le système" de "ce que fait le système" (`backend/`).
 
-Aucun problème de connectivité : Jenkins n'a pas besoin de joindre les conteneurs applicatifs par leur nom DNS pour construire/tester du code, et le futur `Deploy` pilotera la stack via Ansible. Un test qui aurait besoin d'une vraie instance Postgres/Neo4j utilisera Testcontainers plutôt qu'une stack partagée déjà démarrée.
+Aucun problème de connectivité : Jenkins n'a pas besoin de joindre les conteneurs applicatifs par leur nom DNS pour construire/tester du code, et le stage `Deploy` pilote la stack via Ansible (`ansible-playbook ... playbooks/site.yml`, détaillé dans `08-ansible-deploy-tls.md`). Un test qui a besoin d'une vraie instance Postgres/Neo4j utilise Testcontainers plutôt qu'une stack partagée déjà démarrée.
