@@ -25,10 +25,10 @@ Secret manager et traçage distribué sont réellement nouveaux. L'isolation des
 |---|---|---|
 | Bases de données | MongoDB, isolées par service | **Postgres** (une instance, une base par service) + **Neo4j** (pour `travel-service`) — changement de techno (relationnel + graphe plutôt que documents), pas d'isolation en plus |
 | Isolation entre services | déjà le cas (bases Mongo séparées) | même principe, transposé à Postgres : un user dédié par service, qui ne peut pas lire les bases des autres |
-| Secrets (mots de passe, tokens) | en dur / variables d'env simples | **HashiCorp Vault** (mode dev), chaque service authentifié via sa propre identité AppRole |
+| Secrets (mots de passe, tokens) | en dur / variables d'env simples | **HashiCorp Vault** (mode serveur réel, stockage persistant, TLS), chaque service authentifié via sa propre identité AppRole |
 | Traçage d'une requête | pas de notion équivalente | **Zipkin** — chaque service instrumenté envoie ses traces, consultables dans une UI dédiée |
 
-**Vault en mode dev, pas en mode prod** (le point le plus nouveau) : un vrai déploiement Vault demande du stockage persistant et un déverrouillage (unseal) manuel — inutile tant qu'on développe en local. Le mode dev donne les mêmes mécanismes d'authentification/policies qu'un vrai Vault (AppRole, policies par service), seuls le stockage (mémoire, tout est perdu au redémarrage) et l'unseal (automatique) diffèrent. À retenir pour l'audit : ce n'est pas un raccourci de sécurité, c'est un choix explicite pour l'environnement de dev — le durcissement (stockage persistant, unseal manuel/Shamir) est prévu pour l'étape déploiement.
+**Vault en mode serveur réel** (le point le plus nouveau) : stockage persistant (`file`, survit à un redémarrage), listener TLS, déverrouillage (unseal) via `ansible/playbooks/vault-unseal.yml`. Point de départ en mode dev pendant le développement initial, durci ensuite (voir `08-ansible-deploy-tls.md#pourquoi-vault-ne-tourne-plus-en-mode-dev`) — le mode dev n'est plus utilisé nulle part dans la stack actuelle.
 
 ## auth-service (`feat/auth-service-jwt`)
 

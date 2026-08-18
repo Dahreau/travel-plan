@@ -121,7 +121,7 @@ Deux comportements différents à pointer dans ces fichiers : `destinations`/`ac
 **Neo4j ne stocke pas les voyages** : c'est un graphe séparé de "quelles villes sont reliées entre elles par au moins un voyage" (`PlaceNode`/`ROUTE_TO`), utile pour suggérer des destinations, indépendant de la durée de vie d'un `Travel` précis — une ville reste dans le graphe même si le voyage qui l'a créée est supprimé (décision assumée, voir `audit-findings.md`) :
 
 ```bash
-docker compose exec neo4j cypher-shell -u neo4j -p "$(grep ^NEO4J_PASSWORD= .env | cut -d= -f2-)" \
+docker compose exec neo4j cypher-shell -a bolt+ssc://localhost:7687 -u neo4j -p "$(grep ^NEO4J_PASSWORD= .env | cut -d= -f2-)" \
   "MATCH (a:Place)-[r:ROUTE_TO]->(b:Place) RETURN a.city, b.city, r.tripCount;"
 ```
 
@@ -211,13 +211,15 @@ TRAVEL_ID=$(curl -k -s -X POST https://localhost/api/travels -H "Authorization: 
 curl -k -s -w "\nHTTP: %{http_code}\n" https://localhost/api/travels/$TRAVEL_ID -H "Authorization: Bearer $TOKEN"
 
 # Preuve que la route est aussi écrite dans Neo4j (pas juste Postgres), et que ce hop est bien en bolt+ssc (TLS)
-docker compose exec neo4j cypher-shell -u neo4j -p "$(grep ^NEO4J_PASSWORD= .env | cut -d= -f2-)" \
+docker compose exec neo4j cypher-shell -a bolt+ssc://localhost:7687 -u neo4j -p "$(grep ^NEO4J_PASSWORD= .env | cut -d= -f2-)" \
   "MATCH (a:Place)-[r:ROUTE_TO]->(b:Place) RETURN a.city, b.city, r.tripCount;"
 ```
 </details>
 
 <details>
-<summary>CRUD payment-methods + payments (Stripe test mode réel, refund réel, cascade ON DELETE SET NULL)</summary>
+<summary>CRUD payment-methods + payments (Stripe test mode réel, cascade ON DELETE SET NULL)</summary>
+
+`pm_card_visa` : ID de test permanent fourni par Stripe (mode test uniquement, aucune vraie carte, documenté sur [docs.stripe.com/testing](https://docs.stripe.com/testing)). Même valeur à taper en curl ci-dessous ou directement dans le champ **Token Provider** du formulaire "new payment method" du dashboard.
 
 ```bash
 cat > /tmp/pm.json <<'EOF'
@@ -234,15 +236,12 @@ EOF
 
 PAYMENT_ID=$(curl -k -s -X POST https://localhost/api/payments -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data @/tmp/payment.json | jq -r .id)
 
-# Refund réel : ce paiement disparaît vraiment du solde Stripe (dashboard test mode), pas juste en local
-curl -k -s -w "\nHTTP: %{http_code}\n" -X POST https://localhost/api/payments/$PAYMENT_ID/refund -H "Authorization: Bearer $TOKEN"
-
 # Supprimer le moyen de paiement : le paiement doit survivre (cascade SET NULL, pas de perte de trace financière)
 curl -k -s -w "\nHTTP: %{http_code}\n" -X DELETE https://localhost/api/payment-methods/$PM_ID -H "Authorization: Bearer $TOKEN"
 curl -k -s https://localhost/api/payments/$PAYMENT_ID -H "Authorization: Bearer $TOKEN"   # paymentMethodId doit être null, le reste intact
 ```
 
-`pm_card_visa` est l'ID de test permanent de Stripe (mode test uniquement, aucune vraie carte). PayPal fonctionne différemment : pas de token de test statique équivalent — il faut créer un ordre puis le faire approuver par un compte sandbox buyer via le flux OAuth PayPal, plus long à dérouler en direct. Pour l'oral : mentionner que l'intégration existe et est testée (`PayPalPaymentProvider.java`, `PayPalPaymentProviderTest.java`, même interface `PaymentProvider` que Stripe) sans forcément l'exécuter en live — le refund Stripe ci-dessus suffit à prouver que l'appel provider réel a lieu (visible dans le dashboard Stripe test mode, pas juste en local).
+Le refund (`POST /payments/{id}/refund`) existe et notifie réellement Stripe/PayPal (voir `PaymentService.refund()`), mais nécessite une vraie clé `sk_test_...` dans `.env` pour être démontré en live — non requis par l'audit, à ne mentionner que si demandé. PayPal fonctionne différemment de Stripe côté token de test : pas d'équivalent statique à `pm_card_visa`, il faut créer un ordre puis le faire approuver par un compte sandbox buyer via OAuth PayPal, plus long à dérouler en direct. Pour l'oral : mentionner que l'intégration existe et est testée (`PayPalPaymentProvider.java`, `PayPalPaymentProviderTest.java`, même interface `PaymentProvider` que Stripe) sans forcément l'exécuter en live.
 </details>
 
 **Is everything working as expected? / Are errors handled correctly?**

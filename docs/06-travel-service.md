@@ -6,19 +6,24 @@
 
 Prérequis : la stack applicative tourne (`./scripts/start-app.sh`) — `travel-service` a besoin de `postgres` (base `travel_db`), `neo4j` et `vault`.
 
-Récupère les identifiants AppRole de `travel-service` (une seule fois, ils ne changent pas) :
+**Façon recommandée** (fonctionne toujours, Vault et TLS déjà câblés) :
+```bash
+docker compose up -d --build travel-service
+```
 
+**Hors Docker (hot-reload local)** : Vault n'a volontairement aucun port publié sur l'host (durcissement sécurité), donc `VAULT_ADDR=http://localhost:8200` ne peut pas fonctionner tel quel — il faut d'abord exposer temporairement le port :
 ```bash
 docker compose exec vault vault read -field=role_id auth/approle/role/travel-service/role-id
 docker compose exec vault vault write -f -field=secret_id auth/approle/role/travel-service/secret-id
+docker compose port vault 8200 || echo "Vault n'a pas de port publié : ajoute temporairement '127.0.0.1:8200:8200' sous vault.ports dans docker-compose.yml puis 'docker compose up -d vault' avant de continuer"
 ```
 
-Puis lance le service :
+Puis lance le service (Postgres est sur le port `5434`, pas le `5432` par défaut ; Neo4j exige une connexion chiffrée, `bolt://` seul échoue) :
 
 ```bash
 cd backend/travel-service
-DB_HOST=localhost DB_PASSWORD=<ton TRAVEL_DB_PASSWORD> \
-NEO4J_URI=bolt://localhost:7687 NEO4J_PASSWORD=<ton NEO4J_PASSWORD> \
+DB_HOST=localhost DB_PORT=5434 DB_PASSWORD=<ton TRAVEL_DB_PASSWORD> \
+NEO4J_URI=bolt+ssc://localhost:7687 NEO4J_PASSWORD=<ton NEO4J_PASSWORD> \
 VAULT_ADDR=http://localhost:8200 VAULT_ROLE_ID=<role_id> VAULT_SECRET_ID=<secret_id> \
 ./mvnw spring-boot:run
 ```

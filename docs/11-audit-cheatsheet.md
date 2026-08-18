@@ -42,7 +42,7 @@ grep -r "hasRole" backend/*/src/main/java --include=SecurityConfig.java
 ```bash
 cat backend/travel-service/src/main/resources/db/migration/V1__create_travel_tables.sql
 cat backend/payment-service/src/main/resources/db/migration/V1__create_payment_tables.sql
-docker compose exec neo4j cypher-shell -u neo4j -p "$(grep ^NEO4J_PASSWORD= .env | cut -d= -f2-)" \
+docker compose exec neo4j cypher-shell -a bolt+ssc://localhost:7687 -u neo4j -p "$(grep ^NEO4J_PASSWORD= .env | cut -d= -f2-)" \
   "MATCH (a:Place)-[r:ROUTE_TO]->(b:Place) RETURN a.city, b.city, r.tripCount;"
 ```
 
@@ -112,7 +112,7 @@ TRAVEL_ID=$(curl -k -s -X POST https://localhost/api/travels -H "Authorization: 
 
 curl -k -s -w "\nHTTP: %{http_code}\n" https://localhost/api/travels/$TRAVEL_ID -H "Authorization: Bearer $TOKEN"
 
-docker compose exec neo4j cypher-shell -u neo4j -p "$(grep ^NEO4J_PASSWORD= .env | cut -d= -f2-)" \
+docker compose exec neo4j cypher-shell -a bolt+ssc://localhost:7687 -u neo4j -p "$(grep ^NEO4J_PASSWORD= .env | cut -d= -f2-)" \
   "MATCH (a:Place)-[r:ROUTE_TO]->(b:Place) RETURN a.city, b.city, r.tripCount;"
 ```
 </details>
@@ -134,8 +134,6 @@ cat > /tmp/payment.json <<EOF
 EOF
 
 PAYMENT_ID=$(curl -k -s -X POST https://localhost/api/payments -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data @/tmp/payment.json | jq -r .id)
-
-curl -k -s -w "\nHTTP: %{http_code}\n" -X POST https://localhost/api/payments/$PAYMENT_ID/refund -H "Authorization: Bearer $TOKEN"
 
 curl -k -s -w "\nHTTP: %{http_code}\n" -X DELETE https://localhost/api/payment-methods/$PM_ID -H "Authorization: Bearer $TOKEN"
 curl -k -s https://localhost/api/payments/$PAYMENT_ID -H "Authorization: Bearer $TOKEN"

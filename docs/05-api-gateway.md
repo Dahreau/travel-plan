@@ -6,11 +6,17 @@
 
 Prérequis : `auth-service` (port 8081), `user-service` (port 8082), `travel-service` (port 8083) et `payment-service` (port 8084) tournent déjà (voir leurs pages respectives), plus Vault et Zipkin (`./scripts/start-app.sh`).
 
-Récupère les identifiants AppRole d'`api-gateway` :
+**Façon recommandée** (fonctionne toujours, Vault et TLS déjà câblés) :
+```bash
+docker compose up -d --build api-gateway
+```
+
+**Hors Docker (hot-reload local)** : Vault n'a volontairement aucun port publié sur l'host (durcissement sécurité), donc `VAULT_ADDR=http://localhost:8200` ne peut pas fonctionner tel quel — il faut d'abord exposer temporairement le port :
 
 ```bash
 docker compose exec vault vault read -field=role_id auth/approle/role/api-gateway/role-id
 docker compose exec vault vault write -f -field=secret_id auth/approle/role/api-gateway/secret-id
+docker compose port vault 8200 || echo "Vault n'a pas de port publié : ajoute temporairement '127.0.0.1:8200:8200' sous vault.ports dans docker-compose.yml puis 'docker compose up -d vault' avant de continuer"
 ```
 
 Puis lance le gateway :
